@@ -1,9 +1,17 @@
 import random
+import logging
+import traceback
+from datetime import timedelta
+from django.utils import timezone
 from rest_framework import generics, permissions, status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
-from .models import Category, Phrase, Word, UserPhraseProgress
+from .models import Category, Phrase, Word, UserPhraseProgress, AIWarmupSession
 from .serializers import CategorySerializer, PhraseSerializer, WordSerializer
+from .openai_service import generate_warmup_phrases
+from apps.accounts.models import UserMemory
+
+logger = logging.getLogger(__name__)
 
 
 class CategoryListView(generics.ListAPIView):
@@ -76,6 +84,76 @@ def mark_phrase_practiced(request, phrase_id):
     progress.is_mastered = progress.practiced_count >= 3
     progress.save()
     return Response({'practiced_count': progress.practiced_count, 'is_mastered': progress.is_mastered})
+
+
+DAILY_AI_LIMIT = 5  # 1日あたりの生成上限回数
+
+
+@api_view(['GET'])
+def ai_warmup(request):
+    """
+    AIが毎回異なるウォームアップフレーズを10個生成して返す。
+    直近7日間に表示したフレーズは除外（重複防止）。
+    1日あたり DAILY_AI_LIMIT 回まで生成可能。
+    """
+    user = request.user
+    level = request.query_params.get('level', user.level)
+
+    # ── 1日の生成回数チェック ──
+    today_start = timezone.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    today_count = AIWarmupSession.objects.filter(user=user, created_at__gte=today_start).count()
+    if today_count >= DAILY_AI_LIMIT:
+        return Response({
+            'error': f'本日の生成上限（{DAILY_AI_LIMIT}回）に達しました。明日また挑戦してください！',
+            'limit_reached': True,
+            'remaining_today': 0,
+        }, status=429)
+
+    # 直近7日間に表示したフレーズのハッシュを収集
+    cutoff = timezone.now() - timedelta(days=7)
+    recent_sessions = AIWarmupSession.objects.filter(user=user, created_at__gte=cutoff)
+    excluded_hashes = []
+    for s in recent_sessions:
+        excluded_hashes.extend(s.phrases_shown or [])
+
+    # ユーザー記憶コンテキストを取得
+    memory_context = ''
+    try:
+        memory = UserMemory.objects.get(user=user)
+        memory_context = memory.to_context_string()
+    except UserMemory.DoesNotExist:
+        pass
+
+    try:
+        phrases = generate_warmup_phrases(
+            level=level,
+            memory_context=memory_context,
+            excluded_hashes=excluded_hashes,
+            count=10,
+        )
+    except Exception as e:
+        error_detail = traceback.format_exc()
+        logger.error(f'[ai_warmup] OpenAI call failed: {e}\n{error_detail}')
+        return Response({'error': f'AI生成に失敗しました: {str(e)}', 'detail': error_detail}, status=500)
+
+    # 今回表示したハッシュを履歴に保存
+    shown_hashes = [p.get('hash', '') for p in phrases if p.get('hash')]
+    if shown_hashes:
+        AIWarmupSession.objects.create(user=user, phrases_shown=shown_hashes)
+        # 古い履歴を30件以上は削除
+        old_ids = AIWarmupSession.objects.filter(user=user).order_by('-created_at').values_list('id', flat=True)[30:]
+        if old_ids:
+            AIWarmupSession.objects.filter(id__in=list(old_ids)).delete()
+
+    used_today = today_count + 1
+    remaining = max(0, DAILY_AI_LIMIT - used_today)
+    return Response({
+        'phrases': phrases,
+        'count': len(phrases),
+        'remaining_today': remaining,
+        'used_today': used_today,
+        'daily_limit': DAILY_AI_LIMIT,
+    })
 
 
 @api_view(['GET'])

@@ -12,6 +12,9 @@ from .openai_service import chat_with_ai, generate_conversation_summary, transcr
 from apps.mistakes.models import Mistake
 from apps.accounts.models import UserMemory
 
+# 1セッションあたりのユーザー発言上限（フロントエンドの MAX_TURNS と合わせる）
+MAX_TURNS_PER_SESSION = 10
+
 
 class SessionListView(generics.ListAPIView):
     serializer_class = ConversationSessionSerializer
@@ -102,6 +105,16 @@ def send_message(request, session_id):
     user_content = request.data.get('content', '').strip()
     if not user_content:
         return Response({'error': 'Message content is required.'}, status=400)
+
+    # ── セッション内10ターン上限チェック（サーバーサイド強制） ──
+    user_turns = session.messages.filter(role='user').count()
+    if user_turns >= MAX_TURNS_PER_SESSION:
+        return Response({
+            'error': 'session_turn_limit_reached',
+            'message': f'1セッションの発言上限（{MAX_TURNS_PER_SESSION}回）に達しました。新しいセッションを開始してください。',
+            'turns_used': user_turns,
+            'turns_limit': MAX_TURNS_PER_SESSION,
+        }, status=status.HTTP_400_BAD_REQUEST)
 
     # Save user message
     user_message = ConversationMessage.objects.create(

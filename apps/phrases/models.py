@@ -70,3 +70,16 @@ class UserPhraseProgress(models.Model):
 
     class Meta:
         unique_together = ['user', 'phrase']
+
+
+class AIWarmupSession(models.Model):
+    """AIが生成したウォームアップフレーズの履歴（重複防止用）"""
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='ai_warmup_sessions')
+    phrases_shown = models.JSONField(default=list, help_text='表示したフレーズのハッシュリスト（重複防止）')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'AIWarmup {self.user.email} @ {self.created_at.date()}'

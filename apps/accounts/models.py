@@ -1,6 +1,10 @@
+import os
 from django.contrib.auth.models import AbstractUser
 from django.db import models
 from django.utils import timezone
+
+# BYPASS_SUBSCRIPTION=True のとき全ユーザーをプレミアム扱い（開発・TestFlight用）
+_BYPASS = os.getenv('BYPASS_SUBSCRIPTION', 'False').lower() in ('true', '1', 'yes')
 
 
 class User(AbstractUser):
@@ -45,6 +49,9 @@ class User(AbstractUser):
 
     @property
     def is_premium(self):
+        # BYPASS_SUBSCRIPTION=True のときは常にTrue（開発・TestFlight用）
+        if _BYPASS:
+            return True
         if self.subscription_tier == 'premium':
             if self.subscription_expires_at and self.subscription_expires_at > timezone.now():
                 return True
