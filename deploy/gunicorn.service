@@ -10,7 +10,7 @@ WorkingDirectory=/var/www/eikaiwa
 EnvironmentFile=/etc/eikaiwa.env
 ExecStart=/var/www/eikaiwa/venv/bin/gunicorn \
     --workers 3 \
-    --bind unix:/run/eikaiwa.sock \
+    --bind unix:/run/eikaiwa/eikaiwa.sock \
     --timeout 120 \
     --access-logfile /var/log/eikaiwa/access.log \
     --error-logfile /var/log/eikaiwa/error.log \
