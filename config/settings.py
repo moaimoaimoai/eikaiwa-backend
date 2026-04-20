@@ -135,5 +135,12 @@ CORS_ALLOWED_ORIGINS = os.getenv(
 # CORS_ALLOWED_ORIGINS に本番URLを追加すること
 CORS_ALLOW_ALL_ORIGINS = os.getenv('CORS_ALLOW_ALL_ORIGINS', str(DEBUG)).lower() == 'true'
 
+# CSRF
+# Django 4.0以降、HTTPS経由のPOSTリクエストにはこの設定が必須
+CSRF_TRUSTED_ORIGINS = os.getenv(
+    'CSRF_TRUSTED_ORIGINS',
+    'https://api.nicelinks.net,https://nicelinks.net'
+).split(',')
+
 # OpenAI
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY', '')
