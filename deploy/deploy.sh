@@ -23,15 +23,19 @@ echo "=== [2/5] 依存パッケージの更新 ==="
 sudo -u "${APP_USER}" "${APP_DIR}/venv/bin/pip" install -r "${APP_DIR}/requirements.txt"
 
 echo "=== [3/5] マイグレーション ==="
-sudo -u "${APP_USER}" bash -c "
+sudo bash -c "
+    set -a
     source /etc/eikaiwa.env
+    set +a
     cd ${APP_DIR}
     ./venv/bin/python manage.py migrate --noinput
 "
 
 echo "=== [4/5] 静的ファイルの収集 ==="
-sudo -u "${APP_USER}" bash -c "
+sudo bash -c "
+    set -a
     source /etc/eikaiwa.env
+    set +a
     cd ${APP_DIR}
     ./venv/bin/python manage.py collectstatic --noinput
 "
