@@ -8,7 +8,7 @@ set -euo pipefail
 APP_NAME="eikaiwa"
 APP_DIR="/var/www/${APP_NAME}"
 APP_USER="www-data"
-REPO_URL="https://github.com/YOUR_USERNAME/eikaiwa-backend.git"  # ← 変更する
+REPO_URL="https://github.com/moaimoaimoai/eikaiwa-backend.git"
 BRANCH="main"
 
 echo "=== [1/5] 最新コードを取得 ==="
