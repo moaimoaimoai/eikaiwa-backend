@@ -17,9 +17,12 @@ DEBUG = os.getenv('DEBUG', 'True') == 'True'
 ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1,0.0.0.0').split(',')
 
 # CloudFront → EC2 の HTTPS を Django に認識させる
-# Nginx が X-Forwarded-Proto を転送するので USE_X_FORWARDED_HOST は不要
 USE_X_FORWARDED_HOST = True
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+
+# 既存 CloudFront に相乗りする場合、/eikaiwa/ プレフィックスを Django に認識させる
+# 単独 CloudFront を使う場合は空文字列にする
+FORCE_SCRIPT_NAME = os.getenv('FORCE_SCRIPT_NAME', '')
 
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -97,9 +100,9 @@ TIME_ZONE = 'Asia/Tokyo'
 USE_I18N = True
 USE_TZ = True
 
-STATIC_URL = '/static/'
+STATIC_URL = os.getenv('STATIC_URL', '/static/')
 STATIC_ROOT = BASE_DIR / 'staticfiles'
-MEDIA_URL = '/media/'
+MEDIA_URL = os.getenv('MEDIA_URL', '/media/')
 MEDIA_ROOT = BASE_DIR / 'media'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
