@@ -1,0 +1,26 @@
+[Unit]
+Description=Gunicorn daemon for eikaiwa Django app
+After=network.target
+
+[Service]
+Type=notify
+User=www-data
+Group=www-data
+WorkingDirectory=/var/www/eikaiwa
+EnvironmentFile=/etc/eikaiwa.env
+ExecStart=/var/www/eikaiwa/venv/bin/gunicorn \
+    --workers 3 \
+    --bind unix:/run/eikaiwa.sock \
+    --timeout 120 \
+    --access-logfile /var/log/eikaiwa/access.log \
+    --error-logfile /var/log/eikaiwa/error.log \
+    config.wsgi:application
+ExecReload=/bin/kill -s HUP $MAINPID
+KillMode=mixed
+TimeoutStopSec=5
+PrivateTmp=true
+RuntimeDirectory=eikaiwa
+LogsDirectory=eikaiwa
+
+[Install]
+WantedBy=multi-user.target
