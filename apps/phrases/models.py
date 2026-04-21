@@ -98,3 +98,33 @@ class AIWordSession(models.Model):
 
     def __str__(self):
         return f'AIWord {self.user.email} @ {self.created_at.date()}'
+
+
+class SavedPhrase(models.Model):
+    """会話中のコーチング・サマリーから自動保存される便利フレーズ帳"""
+    SOURCE_CHOICES = [
+        ('coaching', '会話中コーチング'),
+        ('summary',  '会話サマリー'),
+        ('correction', '添削フレーズ'),
+    ]
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='saved_phrases')
+    session = models.ForeignKey(
+        'conversation.ConversationSession',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='saved_phrases',
+    )
+    english = models.CharField(max_length=500)
+    japanese = models.CharField(max_length=500)
+    context_ja = models.TextField(blank=True)    # 使える場面メモ
+    source = models.CharField(max_length=20, choices=SOURCE_CHOICES, default='coaching')
+    session_topic = models.CharField(max_length=50, blank=True)
+    is_mastered = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'{self.english[:40]} ({self.user.email})'

@@ -11,6 +11,7 @@ from .serializers import ConversationSessionSerializer, ConversationMessageSeria
 from .openai_service import chat_with_ai, generate_conversation_summary, transcribe_audio, transcribe_audio_ja, text_to_speech, update_user_memory, japanese_to_english
 from apps.mistakes.models import Mistake
 from apps.accounts.models import UserMemory
+from apps.phrases.models import SavedPhrase
 
 # 1セッションあたりのユーザー発言上限（フロントエンドの MAX_TURNS と合わせる）
 MAX_TURNS_PER_SESSION = 10
@@ -190,6 +191,21 @@ def send_message(request, session_id):
 
     coaching = result.get('coaching')
 
+    # coaching の便利フレーズをフレーズ帳に自動保存
+    if coaching and coaching.get('useful_phrases'):
+        for p in coaching['useful_phrases']:
+            english = p.get('english', '').strip()
+            if english and not SavedPhrase.objects.filter(user=request.user, english__iexact=english).exists():
+                SavedPhrase.objects.create(
+                    user=request.user,
+                    session=session,
+                    english=english,
+                    japanese=p.get('japanese', ''),
+                    context_ja=coaching.get('tip_ja', ''),
+                    source='coaching',
+                    session_topic=session.topic,
+                )
+
     return Response({
         'user_message': ConversationMessageSerializer(user_message).data,
         'ai_message': ConversationMessageSerializer(ai_message).data,
@@ -255,6 +271,24 @@ def end_session(request, session_id):
             memory.topics_discussed = topics[-20:]  # 最新20件のみ保持
             memory.session_count += 1
             memory.save()
+    except Exception:
+        pass
+
+    # ── サマリーの便利フレーズをフレーズ帳に自動保存 ──
+    try:
+        if summary.get('useful_phrases'):
+            for p in summary['useful_phrases']:
+                english = p.get('english', '').strip()
+                if english and not SavedPhrase.objects.filter(user=user, english__iexact=english).exists():
+                    SavedPhrase.objects.create(
+                        user=user,
+                        session=session,
+                        english=english,
+                        japanese=p.get('japanese', ''),
+                        context_ja=p.get('context_ja', ''),
+                        source='summary',
+                        session_topic=session.topic,
+                    )
     except Exception:
         pass
 

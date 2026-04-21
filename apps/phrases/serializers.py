@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Category, Phrase, Word, UserPhraseProgress
+from .models import Category, Phrase, Word, UserPhraseProgress, SavedPhrase
 
 
 class CategorySerializer(serializers.ModelSerializer):
@@ -36,3 +36,10 @@ class WordSerializer(serializers.ModelSerializer):
         model = Word
         fields = ['id', 'word', 'definition', 'definition_ja', 'part_of_speech',
                   'example_sentence', 'example_sentence_ja', 'level']
+
+
+class SavedPhraseSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = SavedPhrase
+        fields = ['id', 'english', 'japanese', 'context_ja', 'source',
+                  'session_topic', 'is_mastered', 'created_at']

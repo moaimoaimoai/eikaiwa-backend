@@ -202,8 +202,27 @@ Respond with this JSON structure:
   "fluency_score": 70,
   "accuracy_score": 80,
   "vocabulary_score": 75,
-  "encouragement_ja": "励ましのメッセージ（日本語）"
-}}"""
+  "encouragement_ja": "励ましのメッセージ（日本語）",
+  "useful_phrases": [
+    {{
+      "english": "A natural English phrase that came up or would have been useful in this conversation",
+      "japanese": "日本語訳",
+      "context_ja": "どんな場面で使えるか（1文、日本語）"
+    }},
+    {{
+      "english": "Another useful phrase from this conversation's topic",
+      "japanese": "日本語訳",
+      "context_ja": "どんな場面で使えるか（1文、日本語）"
+    }},
+    {{
+      "english": "A third useful phrase",
+      "japanese": "日本語訳",
+      "context_ja": "どんな場面で使えるか（1文、日本語）"
+    }}
+  ]
+}}
+
+For useful_phrases: pick 3 phrases that were actually used in the conversation OR would have been natural to use given the topic. Focus on practical, conversational phrases the learner can immediately reuse."""
 
     completion = client.chat.completions.create(
         model='gpt-4o',
@@ -211,7 +230,7 @@ Respond with this JSON structure:
             {'role': 'system', 'content': 'You are an expert English teacher. Respond only with valid JSON.'},
             {'role': 'user', 'content': prompt}
         ],
-        max_tokens=600,
+        max_tokens=800,
         temperature=0.3,
         response_format={'type': 'json_object'},
     )
@@ -227,7 +246,8 @@ Respond with this JSON structure:
             'fluency_score': 70,
             'accuracy_score': 70,
             'vocabulary_score': 70,
-            'encouragement_ja': '素晴らしい練習でした！続けて頑張りましょう！'
+            'encouragement_ja': '素晴らしい練習でした！続けて頑張りましょう！',
+            'useful_phrases': [],
         }
 
 

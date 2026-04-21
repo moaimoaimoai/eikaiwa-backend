@@ -6,8 +6,8 @@ from django.utils import timezone
 from rest_framework import generics, permissions, status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
-from .models import Category, Phrase, Word, UserPhraseProgress, AIWarmupSession, AIWordSession
-from .serializers import CategorySerializer, PhraseSerializer, WordSerializer
+from .models import Category, Phrase, Word, UserPhraseProgress, AIWarmupSession, AIWordSession, SavedPhrase
+from .serializers import CategorySerializer, PhraseSerializer, WordSerializer, SavedPhraseSerializer
 from .openai_service import generate_warmup_phrases, generate_ai_words
 from apps.accounts.models import UserMemory
 
@@ -322,3 +322,84 @@ def quiz_words(request):
         })
 
     return Response({'questions': questions})
+
+
+# ─────────────────────────────────────────────
+#  SavedPhrase（フレーズ帳）API
+# ─────────────────────────────────────────────
+
+@api_view(['GET'])
+def saved_phrases_list(request):
+    """フレーズ帳の一覧を返す。source・mastered でフィルタ可能。"""
+    qs = SavedPhrase.objects.filter(user=request.user)
+    source = request.query_params.get('source')
+    if source:
+        qs = qs.filter(source=source)
+    mastered = request.query_params.get('mastered')
+    if mastered == 'true':
+        qs = qs.filter(is_mastered=True)
+    elif mastered == 'false':
+        qs = qs.filter(is_mastered=False)
+    serializer = SavedPhraseSerializer(qs, many=True)
+    return Response({'results': serializer.data, 'count': qs.count()})
+
+
+@api_view(['POST'])
+def saved_phrases_bulk_create(request):
+    """複数フレーズを一括保存。英語の重複は無視。"""
+    phrases_data = request.data.get('phrases', [])
+    session_id = request.data.get('session_id')
+    source = request.data.get('source', 'coaching')
+    session_topic = request.data.get('session_topic', '')
+
+    session = None
+    if session_id:
+        try:
+            from apps.conversation.models import ConversationSession
+            session = ConversationSession.objects.get(id=session_id, user=request.user)
+        except Exception:
+            pass
+
+    created_count = 0
+    for p in phrases_data:
+        english = p.get('english', '').strip()
+        if not english:
+            continue
+        if SavedPhrase.objects.filter(user=request.user, english__iexact=english).exists():
+            continue
+        SavedPhrase.objects.create(
+            user=request.user,
+            session=session,
+            english=english,
+            japanese=p.get('japanese', ''),
+            context_ja=p.get('context_ja', ''),
+            source=source,
+            session_topic=session_topic,
+        )
+        created_count += 1
+
+    return Response({'created': created_count})
+
+
+@api_view(['DELETE'])
+def saved_phrase_delete(request, phrase_id):
+    """フレーズを削除する。"""
+    try:
+        phrase = SavedPhrase.objects.get(id=phrase_id, user=request.user)
+        phrase.delete()
+        return Response({'deleted': True})
+    except SavedPhrase.DoesNotExist:
+        return Response({'error': 'Not found.'}, status=404)
+
+
+@api_view(['POST'])
+def saved_phrase_toggle_mastered(request, phrase_id):
+    """マスター済みトグル。"""
+    try:
+        phrase = SavedPhrase.objects.get(id=phrase_id, user=request.user)
+        phrase.is_mastered = not phrase.is_mastered
+        phrase.save()
+        return Response({'is_mastered': phrase.is_mastered})
+    except SavedPhrase.DoesNotExist:
+        return Response({'error': 'Not found.'}, status=404)
+
