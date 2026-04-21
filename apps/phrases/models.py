@@ -76,6 +76,7 @@ class AIWarmupSession(models.Model):
     """AIが生成したウォームアップフレーズの履歴（重複防止用）"""
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='ai_warmup_sessions')
     phrases_shown = models.JSONField(default=list, help_text='表示したフレーズのハッシュリスト（重複防止）')
+    phrases_data = models.JSONField(default=list, help_text='生成したフレーズの全データ（上限到達時の再表示用）')
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

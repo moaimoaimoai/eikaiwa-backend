@@ -101,12 +101,24 @@ def ai_warmup(request):
 
     # ── 1日の生成回数チェック ──
     today_start = timezone.now().replace(hour=0, minute=0, second=0, microsecond=0)
-    today_count = AIWarmupSession.objects.filter(user=user, created_at__gte=today_start).count()
+    today_sessions = AIWarmupSession.objects.filter(user=user, created_at__gte=today_start).order_by('-created_at')
+    today_count = today_sessions.count()
     if today_count >= DAILY_AI_LIMIT:
+        # 今日生成済みのフレーズをすべて集めて返す（重複除去）
+        seen_hashes: set = set()
+        today_phrases = []
+        for session in today_sessions:
+            for phrase in (session.phrases_data or []):
+                h = phrase.get('hash', '')
+                if h and h not in seen_hashes:
+                    seen_hashes.add(h)
+                    today_phrases.append(phrase)
         return Response({
             'error': f'本日の生成上限（{DAILY_AI_LIMIT}回）に達しました。明日また挑戦してください！',
             'limit_reached': True,
             'remaining_today': 0,
+            'daily_limit': DAILY_AI_LIMIT,
+            'phrases': today_phrases,  # 今日生成済みのフレーズを返す
         }, status=429)
 
     # 直近7日間に表示したフレーズのハッシュを収集
@@ -136,10 +148,14 @@ def ai_warmup(request):
         logger.error(f'[ai_warmup] OpenAI call failed: {e}\n{error_detail}')
         return Response({'error': f'AI生成に失敗しました: {str(e)}', 'detail': error_detail}, status=500)
 
-    # 今回表示したハッシュを履歴に保存
+    # 今回表示したハッシュとフレーズデータを履歴に保存
     shown_hashes = [p.get('hash', '') for p in phrases if p.get('hash')]
     if shown_hashes:
-        AIWarmupSession.objects.create(user=user, phrases_shown=shown_hashes)
+        AIWarmupSession.objects.create(
+            user=user,
+            phrases_shown=shown_hashes,
+            phrases_data=phrases,  # フレーズ全データも保存（上限到達時の再表示用）
+        )
         # 古い履歴を30件以上は削除
         old_ids = AIWarmupSession.objects.filter(user=user).order_by('-created_at').values_list('id', flat=True)[30:]
         if old_ids:
