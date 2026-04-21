@@ -8,7 +8,7 @@ from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from rest_framework.response import Response
 from .models import ConversationSession, ConversationMessage
 from .serializers import ConversationSessionSerializer, ConversationMessageSerializer
-from .openai_service import chat_with_ai, generate_conversation_summary, transcribe_audio, text_to_speech, update_user_memory
+from .openai_service import chat_with_ai, generate_conversation_summary, transcribe_audio, transcribe_audio_ja, text_to_speech, update_user_memory, japanese_to_english
 from apps.mistakes.models import Mistake
 from apps.accounts.models import UserMemory
 
@@ -159,6 +159,8 @@ def send_message(request, session_id):
             original_text=correction.get('original', user_content),
             corrected_text=correction.get('corrected', ''),
             explanation=correction.get('explanation', ''),
+            advice_ja=correction.get('advice_ja', ''),
+            useful_phrases=correction.get('useful_phrases', []),
             mistake_type=correction.get('mistake_type', 'grammar'),
             context=user_content,
         )
@@ -262,17 +264,34 @@ def end_session(request, session_id):
 @api_view(['POST'])
 @parser_classes([MultiPartParser, FormParser])
 def transcribe_audio_view(request):
-    """Transcribe audio file using Whisper."""
+    """Transcribe audio file using Whisper. language param: 'en' (default) or 'ja'."""
     audio_file = request.FILES.get('audio')
     if not audio_file:
         return Response({'error': 'Audio file is required.'}, status=400)
 
+    language = request.data.get('language', 'en')
+
     try:
-        # Wrap with proper name for OpenAI
         audio_io = io.BytesIO(audio_file.read())
         audio_io.name = audio_file.name or 'recording.m4a'
-        text = transcribe_audio(audio_io)
+        if language == 'ja':
+            text = transcribe_audio_ja(audio_io)
+        else:
+            text = transcribe_audio(audio_io)
         return Response({'text': text})
+    except Exception as e:
+        return Response({'error': str(e)}, status=500)
+
+
+@api_view(['POST'])
+def translate_japanese_to_english(request):
+    """日本語テキストを英語に翻訳してアドバイスを返す。"""
+    japanese_text = request.data.get('text', '').strip()
+    if not japanese_text:
+        return Response({'error': 'テキストを入力してください。'}, status=400)
+    try:
+        result = japanese_to_english(japanese_text)
+        return Response(result)
     except Exception as e:
         return Response({'error': str(e)}, status=500)
 

@@ -9,4 +9,5 @@ urlpatterns = [
     path('<int:session_id>/', views.session_detail, name='session-detail'),
     path('audio/transcribe/', views.transcribe_audio_view, name='transcribe'),
     path('audio/synthesize/', views.synthesize_speech, name='synthesize'),
+    path('translate/', views.translate_japanese_to_english, name='translate-ja-en'),
 ]

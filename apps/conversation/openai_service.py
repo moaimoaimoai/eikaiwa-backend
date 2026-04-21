@@ -25,7 +25,12 @@ When the user makes a grammar or vocabulary mistake, ALWAYS:
   "original": "the user's incorrect phrase",
   "corrected": "the correct version",
   "explanation": "Brief explanation in Japanese: [explanation]",
-  "mistake_type": "grammar|vocabulary|pronunciation|other"
+  "mistake_type": "grammar|vocabulary|pronunciation|other",
+  "advice_ja": "この表現をより自然・流暢に言うための一言アドバイス（日本語、1文）",
+  "useful_phrases": [
+    {{"english": "A natural alternative or related useful phrase", "japanese": "日本語訳"}},
+    {{"english": "Another related useful phrase", "japanese": "日本語訳"}}
+  ]
 }}
 </correction>
 
@@ -215,3 +220,51 @@ def text_to_speech(text: str, voice: str = 'nova') -> bytes:
         response_format='mp3',
     )
     return response.content
+
+
+def japanese_to_english(japanese_text: str) -> dict:
+    """日本語テキストを英語に翻訳し、発音ヒントや代替表現を返す。"""
+    prompt = f"""A Japanese English learner wants to say the following in English: "{japanese_text}"
+
+Provide a natural English translation with helpful learning support in this JSON format:
+{{
+  "english": "The most natural English phrase",
+  "pronunciation_hint": "カタカナまたは日本語でのの発音ガイド（例: ハウ キャン アイ ヘルプ ユー？）",
+  "alternatives": [
+    {{"english": "A slightly different natural phrasing", "note": "どんな場面で使えるか（日本語、短く）"}},
+    {{"english": "Another variant if applicable", "note": "どんな場面で使えるか（日本語、短く）"}}
+  ],
+  "context_note": "この表現をいつ・どんな場面で使うかの一言メモ（日本語）"
+}}
+
+Keep the English natural and appropriate for conversation. Return only valid JSON."""
+
+    try:
+        completion = client.chat.completions.create(
+            model='gpt-4o-mini',
+            messages=[
+                {'role': 'system', 'content': 'You are a helpful English teacher for Japanese speakers. Return only valid JSON.'},
+                {'role': 'user', 'content': prompt}
+            ],
+            max_tokens=350,
+            temperature=0.3,
+            response_format={'type': 'json_object'},
+        )
+        return json.loads(completion.choices[0].message.content)
+    except Exception:
+        return {
+            'english': '',
+            'pronunciation_hint': '',
+            'alternatives': [],
+            'context_note': ''
+        }
+
+
+def transcribe_audio_ja(audio_file) -> str:
+    """日本語音声をWhisperで文字起こしする。"""
+    transcript = client.audio.transcriptions.create(
+        model='whisper-1',
+        file=audio_file,
+        language='ja',
+    )
+    return transcript.text

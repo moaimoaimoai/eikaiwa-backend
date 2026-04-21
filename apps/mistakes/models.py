@@ -23,6 +23,8 @@ class Mistake(models.Model):
     original_text = models.CharField(max_length=500)
     corrected_text = models.CharField(max_length=500)
     explanation = models.TextField(blank=True)
+    advice_ja = models.TextField(blank=True)
+    useful_phrases = models.JSONField(default=list, blank=True)
     mistake_type = models.CharField(max_length=20, choices=MISTAKE_TYPE_CHOICES, default='grammar')
     context = models.TextField(blank=True)
     is_mastered = models.BooleanField(default=False)
