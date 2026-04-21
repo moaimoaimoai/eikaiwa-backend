@@ -6,9 +6,9 @@ from django.utils import timezone
 from rest_framework import generics, permissions, status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
-from .models import Category, Phrase, Word, UserPhraseProgress, AIWarmupSession
+from .models import Category, Phrase, Word, UserPhraseProgress, AIWarmupSession, AIWordSession
 from .serializers import CategorySerializer, PhraseSerializer, WordSerializer
-from .openai_service import generate_warmup_phrases
+from .openai_service import generate_warmup_phrases, generate_ai_words
 from apps.accounts.models import UserMemory
 
 logger = logging.getLogger(__name__)
@@ -172,6 +172,86 @@ def ai_warmup(request):
     })
 
 
+DAILY_AI_WORD_LIMIT = 5  # 単語も1日5回まで
+
+
+@api_view(['GET'])
+def ai_words(request):
+    """
+    AIが毎回異なる単語カードを10個生成して返す。
+    フレーズと同様に直近7日の重複防止・1日上限付き。
+    """
+    user = request.user
+    level = request.query_params.get('level', user.level)
+
+    today_start = timezone.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    today_sessions = AIWordSession.objects.filter(user=user, created_at__gte=today_start).order_by('-created_at')
+    today_count = today_sessions.count()
+
+    if today_count >= DAILY_AI_WORD_LIMIT:
+        seen_hashes: set = set()
+        today_words = []
+        for session in today_sessions:
+            for word in (session.words_data or []):
+                h = word.get('hash', '')
+                if h and h not in seen_hashes:
+                    seen_hashes.add(h)
+                    today_words.append(word)
+        return Response({
+            'error': f'本日の生成上限（{DAILY_AI_WORD_LIMIT}回）に達しました。',
+            'limit_reached': True,
+            'remaining_today': 0,
+            'daily_limit': DAILY_AI_WORD_LIMIT,
+            'words': today_words,
+        }, status=429)
+
+    cutoff = timezone.now() - timedelta(days=7)
+    recent_sessions = AIWordSession.objects.filter(user=user, created_at__gte=cutoff)
+    excluded_hashes = []
+    for s in recent_sessions:
+        excluded_hashes.extend(s.words_shown or [])
+
+    memory_context = ''
+    try:
+        from apps.accounts.models import UserMemory
+        memory = UserMemory.objects.get(user=user)
+        memory_context = memory.to_context_string()
+    except Exception:
+        pass
+
+    try:
+        words = generate_ai_words(
+            level=level,
+            memory_context=memory_context,
+            excluded_hashes=excluded_hashes,
+            count=10,
+        )
+    except Exception as e:
+        logger.error(f'[ai_words] OpenAI call failed: {e}')
+        return Response({'error': f'AI生成に失敗しました: {str(e)}'}, status=500)
+
+    shown_hashes = [w.get('hash', '') for w in words if w.get('hash')]
+    if shown_hashes:
+        AIWordSession.objects.create(
+            user=user,
+            words_shown=shown_hashes,
+            words_data=words,
+        )
+        old_ids = AIWordSession.objects.filter(user=user).order_by('-created_at').values_list('id', flat=True)[30:]
+        if old_ids:
+            AIWordSession.objects.filter(id__in=list(old_ids)).delete()
+
+    used_today = today_count + 1
+    remaining = max(0, DAILY_AI_WORD_LIMIT - used_today)
+    return Response({
+        'words': words,
+        'count': len(words),
+        'remaining_today': remaining,
+        'used_today': used_today,
+        'daily_limit': DAILY_AI_WORD_LIMIT,
+    })
+
+
 @api_view(['GET'])
 def quiz_phrases(request):
     """Generate phrase quiz questions."""
@@ -179,15 +259,18 @@ def quiz_phrases(request):
     level = request.query_params.get('level', user.level)
     count = int(request.query_params.get('count', 5))
 
+    # まずそのレベルで絞り込み、足りなければ全レベルから取得
     phrases = list(Phrase.objects.filter(is_active=True, level=level))
     if len(phrases) < 4:
-        return Response({'error': 'Not enough phrases for quiz.'}, status=400)
+        phrases = list(Phrase.objects.filter(is_active=True))
+
+    if len(phrases) < 4:
+        return Response({'error': 'フレーズが不足しています。管理画面からフレーズを追加してください。'}, status=400)
 
     selected = random.sample(phrases, min(count, len(phrases)))
     questions = []
 
     for phrase in selected:
-        # Wrong options (3 random phrases different from correct)
         wrong_choices = random.sample(
             [p for p in phrases if p.id != phrase.id], min(3, len(phrases) - 1)
         )
@@ -212,9 +295,13 @@ def quiz_words(request):
     level = request.query_params.get('level', user.level)
     count = int(request.query_params.get('count', 5))
 
+    # まずそのレベルで絞り込み、足りなければ全レベルから取得
     words = list(Word.objects.filter(is_active=True, level=level))
     if len(words) < 4:
-        return Response({'error': 'Not enough words for quiz.'}, status=400)
+        words = list(Word.objects.filter(is_active=True))
+
+    if len(words) < 4:
+        return Response({'error': '単語が不足しています。管理画面から単語を追加してください。'}, status=400)
 
     selected = random.sample(words, min(count, len(words)))
     questions = []

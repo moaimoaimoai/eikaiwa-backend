@@ -84,3 +84,17 @@ class AIWarmupSession(models.Model):
 
     def __str__(self):
         return f'AIWarmup {self.user.email} @ {self.created_at.date()}'
+
+
+class AIWordSession(models.Model):
+    """AIが生成した単語の履歴（重複防止・1日上限管理用）"""
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='ai_word_sessions')
+    words_shown = models.JSONField(default=list, help_text='表示した単語のハッシュリスト（重複防止）')
+    words_data = models.JSONField(default=list, help_text='生成した単語の全データ（上限到達時の再表示用）')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'AIWord {self.user.email} @ {self.created_at.date()}'
