@@ -36,6 +36,23 @@ When the user makes a grammar or vocabulary mistake, ALWAYS:
 
 If there are NO mistakes, do NOT include a correction section at all.
 
+Additionally, roughly every 2-3 exchanges (NOT every single turn), when the conversation provides a natural opportunity to teach useful English phrases, add a coaching section at the END of your message (after any correction section) in this EXACT JSON format:
+<coaching>
+{{
+  "tip_ja": "この文脈で役立つ一言ポイント（日本語、1文。例：「同意を表すときはこんな言い方も自然です」）",
+  "useful_phrases": [
+    {{"english": "A natural phrase useful in this exact conversation context", "japanese": "日本語訳"}},
+    {{"english": "Another related natural phrase", "japanese": "日本語訳"}}
+  ]
+}}
+</coaching>
+
+Guidelines for coaching:
+- Include coaching when the topic naturally lends itself to useful vocabulary or expressions
+- Skip coaching when a correction section is already long, or when the conversation is just getting started (first 1-2 turns)
+- Focus on phrases the user could realistically use RIGHT NOW in this conversation
+- Do NOT include coaching every single turn — it should feel like a natural, occasional tip from a teacher
+
 Be warm, encouraging, and make the conversation feel natural and fun! Reference what you know about the user naturally when relevant."""
 
 MEMORY_UPDATE_PROMPT = """Based on this conversation, extract any NEW personal information about the user.
@@ -132,6 +149,7 @@ def chat_with_ai(messages: list, avatar_name: str, accent: str, topic: str, leve
 
     # Parse correction if present
     correction = None
+    coaching = None
     clean_response = full_response
 
     correction_match = re.search(r'<correction>(.*?)</correction>', full_response, re.DOTALL)
@@ -139,8 +157,19 @@ def chat_with_ai(messages: list, avatar_name: str, accent: str, topic: str, leve
         try:
             correction_json = correction_match.group(1).strip()
             correction = json.loads(correction_json)
-            # Remove the correction block from the visible response
             clean_response = full_response[:correction_match.start()].strip()
+        except (json.JSONDecodeError, KeyError):
+            pass
+
+    # Parse coaching block (may appear even without a correction)
+    coaching_match = re.search(r'<coaching>(.*?)</coaching>', full_response, re.DOTALL)
+    if coaching_match:
+        try:
+            coaching_json = coaching_match.group(1).strip()
+            coaching = json.loads(coaching_json)
+            # Remove coaching block from visible response
+            before_coaching = clean_response[:coaching_match.start()] if correction_match and coaching_match.start() > correction_match.start() else full_response[:coaching_match.start()]
+            clean_response = before_coaching.strip()
         except (json.JSONDecodeError, KeyError):
             pass
 
@@ -148,6 +177,7 @@ def chat_with_ai(messages: list, avatar_name: str, accent: str, topic: str, leve
         'response': full_response,
         'clean_response': clean_response,
         'correction': correction,
+        'coaching': coaching,
     }
 
 

@@ -188,10 +188,13 @@ def send_message(request, session_id):
         except Exception:
             pass
 
+    coaching = result.get('coaching')
+
     return Response({
         'user_message': ConversationMessageSerializer(user_message).data,
         'ai_message': ConversationMessageSerializer(ai_message).data,
         'correction': correction if has_mistake else None,
+        'coaching': coaching,
         'audio_base64': audio_data,
     })
 
