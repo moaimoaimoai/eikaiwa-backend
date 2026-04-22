@@ -175,8 +175,10 @@ def send_message(request, session_id):
             corrected_text=correction.get('corrected', ''),
             explanation=correction.get('explanation', ''),
             advice_ja=correction.get('advice_ja', ''),
+            level_up=correction.get('level_up', ''),
             useful_phrases=correction.get('useful_phrases', []),
             mistake_type=correction.get('mistake_type', 'grammar'),
+            is_unnatural_only=bool(correction.get('is_unnatural_only', False)),
             context=user_content,
         )
         session.mistake_count += 1
