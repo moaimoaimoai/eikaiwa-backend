@@ -174,7 +174,7 @@ def chat_with_ai(messages: list, avatar_name: str, accent: str, topic: str, leve
     openai_messages.extend(messages)
 
     completion = client.chat.completions.create(
-        model='gpt-4o',
+        model='gpt-4o-mini',  # コスト・速度優先（gpt-4o比: ~15倍安価、~2倍高速）
         messages=openai_messages,
         max_tokens=500,
         temperature=0.8,
@@ -260,7 +260,7 @@ Respond with this JSON structure:
 For useful_phrases: pick 3 phrases that were actually used in the conversation OR would have been natural to use given the topic. Focus on practical, conversational phrases the learner can immediately reuse."""
 
     completion = client.chat.completions.create(
-        model='gpt-4o',
+        model='gpt-4o-mini',  # サマリーはJSON出力のみでminiで十分
         messages=[
             {'role': 'system', 'content': 'You are an expert English teacher. Respond only with valid JSON.'},
             {'role': 'user', 'content': prompt}
