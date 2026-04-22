@@ -42,6 +42,9 @@ def start_session(request):
     topic = request.data.get('topic', 'free')
     avatar_name = request.data.get('avatar_name', 'Emma')
     avatar_accent = request.data.get('avatar_accent', 'American')
+    # 今日のトピック（任意）
+    daily_topic_label = request.data.get('daily_topic_label', '')
+    daily_topic_hint  = request.data.get('daily_topic_hint', '')
 
     # Close any existing active sessions
     ConversationSession.objects.filter(
@@ -60,10 +63,19 @@ def start_session(request):
     memory_context = memory.to_context_string()
 
     # Generate opening message from AI
-    opening_messages = [{
-        'role': 'user',
-        'content': f'Please start our conversation with a friendly greeting and an opening question about {topic}.'
-    }]
+    if daily_topic_label:
+        # デイリートピック指定あり: シナリオに引き込む開幕メッセージを生成
+        opening_prompt = (
+            f'Please start the conversation by setting up the following specific scenario: "{daily_topic_label}". '
+            f'Hint for the scenario: {daily_topic_hint}. '
+            f'Immediately place the user IN the situation with a natural, immersive opening line '
+            f'(e.g. pretend you are a hotel receptionist, a barista, a colleague, etc. as appropriate). '
+            f'Keep it to 2-3 sentences and end with a question that naturally continues the scenario.'
+        )
+    else:
+        opening_prompt = f'Please start our conversation with a friendly greeting and an opening question about {topic}.'
+
+    opening_messages = [{'role': 'user', 'content': opening_prompt}]
 
     result = chat_with_ai(
         opening_messages,
@@ -72,6 +84,8 @@ def start_session(request):
         topic=topic,
         level=user.level,
         memory_context=memory_context,
+        daily_topic_label=daily_topic_label,
+        daily_topic_hint=daily_topic_hint,
     )
 
     # Save AI opening message

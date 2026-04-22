@@ -75,7 +75,15 @@ Return only JSON. If nothing new was learned, return {{}}.
 """
 
 
-def get_system_prompt(avatar_name: str, accent: str, topic: str, level: str, memory_context: str = '') -> str:
+def get_system_prompt(
+    avatar_name: str,
+    accent: str,
+    topic: str,
+    level: str,
+    memory_context: str = '',
+    daily_topic_label: str = '',
+    daily_topic_hint: str = '',
+) -> str:
     topic_contexts = {
         'free': 'any topic the user wants to discuss',
         'daily_life': 'daily life, routines, and everyday activities',
@@ -85,6 +93,16 @@ def get_system_prompt(avatar_name: str, accent: str, topic: str, level: str, mem
         'hobby': 'hobbies, interests, sports, and entertainment',
     }
     topic_context = topic_contexts.get(topic, 'any topic')
+
+    # デイリートピックがある場合はより具体的な文脈を付加する
+    if daily_topic_label:
+        hint_str = f" ({daily_topic_hint})" if daily_topic_hint else ""
+        topic_context = (
+            f'the specific scenario: **{daily_topic_label}**{hint_str}. '
+            f'Stay focused on this scenario throughout the conversation. '
+            f'Start with a situation-appropriate greeting and dive into the scenario naturally.'
+        )
+
     memory_section = f"\n## What you remember about this user:\n{memory_context}" if memory_context else ""
     return SYSTEM_PROMPT.format(
         avatar_name=avatar_name,
@@ -128,12 +146,12 @@ def update_user_memory(conversation_messages: list, current_memory) -> dict:
         return {}
 
 
-def chat_with_ai(messages: list, avatar_name: str, accent: str, topic: str, level: str, memory_context: str = '') -> dict:
+def chat_with_ai(messages: list, avatar_name: str, accent: str, topic: str, level: str, memory_context: str = '', daily_topic_label: str = '', daily_topic_hint: str = '') -> dict:
     """
     Send conversation to OpenAI and get response with grammar correction.
     Returns dict with 'response', 'correction' (or None), 'clean_response'
     """
-    system_prompt = get_system_prompt(avatar_name, accent, topic, level, memory_context)
+    system_prompt = get_system_prompt(avatar_name, accent, topic, level, memory_context, daily_topic_label, daily_topic_hint)
 
     openai_messages = [{'role': 'system', 'content': system_prompt}]
     openai_messages.extend(messages)
