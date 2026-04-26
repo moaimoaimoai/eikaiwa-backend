@@ -208,19 +208,22 @@ def send_message(request, session_id):
     coaching = result.get('coaching')
 
     # coaching の便利フレーズをフレーズ帳に自動保存
-    if coaching and coaching.get('useful_phrases'):
-        for p in coaching['useful_phrases']:
-            english = p.get('english', '').strip()
-            if english and not SavedPhrase.objects.filter(user=request.user, english__iexact=english).exists():
-                SavedPhrase.objects.create(
-                    user=request.user,
-                    session=session,
-                    english=english,
-                    japanese=p.get('japanese', ''),
-                    context_ja=coaching.get('tip_ja', ''),
-                    source='coaching',
-                    session_topic=session.topic,
-                )
+    try:
+        if coaching and coaching.get('useful_phrases'):
+            for p in coaching['useful_phrases']:
+                english = p.get('english', '').strip()
+                if english and not SavedPhrase.objects.filter(user=request.user, english__iexact=english).exists():
+                    SavedPhrase.objects.create(
+                        user=request.user,
+                        session=session,
+                        english=english,
+                        japanese=p.get('japanese', ''),
+                        context_ja=coaching.get('tip_ja', ''),
+                        source='coaching',
+                        session_topic=session.topic,
+                    )
+    except Exception:
+        pass  # フレーズ保存の失敗が会話レスポンス全体を壊さないようにする
 
     return Response({
         'user_message': ConversationMessageSerializer(user_message).data,
