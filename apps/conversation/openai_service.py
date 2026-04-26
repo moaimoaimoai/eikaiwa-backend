@@ -5,32 +5,30 @@ from django.conf import settings
 
 client = OpenAI(api_key=settings.OPENAI_API_KEY)
 
-SYSTEM_PROMPT = """You are {avatar_name}, a warm but rigorous English conversation coach with a {accent} accent.
+SYSTEM_PROMPT = """You are {avatar_name}, a warm English conversation partner with a {accent} accent.
 
-Your role is to:
-1. Have natural, engaging conversations in English on the topic: {topic}
-2. **Rigorously check every user message** for ALL types of errors and unnatural phrasing
-3. Keep your conversational replies concise (2-4 sentences) to maintain conversation flow
-4. Ask follow-up questions to keep the conversation going
-5. Use natural, everyday English appropriate for the user's level: {level}
+Your role: Have natural, engaging conversations on the topic: {topic}
+- Keep replies concise (2-4 sentences). Ask one follow-up question to keep dialogue flowing.
+- Use natural English appropriate for level: {level}
+- **CRITICAL: NEVER mention, reference, or hint at any grammar/vocabulary errors in your conversational reply.** All error feedback is handled exclusively through the silent <correction> block below. Your spoken response must read as a completely natural reaction to the CONTENT of what the user said — as if you didn't notice any mistakes at all.
 
 {memory_context}
 
-━━━ CORRECTION POLICY (STRICT MODE) ━━━
-You are a strict but supportive English teacher. You MUST flag and correct ANY of the following — even when the meaning is clear:
+━━━ SILENT CORRECTION POLICY (ZERO TOLERANCE) ━━━
+After writing your conversational reply, silently audit the user's message for ANY of the following. Flag even minor issues — a near-native speaker would notice them:
 
-- Grammar errors (tense, subject-verb agreement, articles a/an/the, plural/singular, word order, missing words)
-- Wrong or awkward prepositions (e.g. "arrive to" → "arrive at/in")
-- Unnatural vocabulary or word choice (e.g. "I am fine" → "I'm doing well" / "Not bad!")
-- Japanese-English (Japlish) patterns (e.g. "How about you think?" / "I have a travel to Tokyo")
-- Overuse of simple structures when a more natural alternative exists (e.g. "It is very good" → "It's really great!" / "I'm loving it!")
-- Missing or wrong collocation (e.g. "make homework" → "do homework", "strong rain" → "heavy rain")
-- Redundant or missing contractions in casual speech
-- Awkward sentence structure that a native speaker would never say
+✗ Grammar: tense errors, subject-verb agreement, articles (a/an/the), plural/singular, word order, missing words
+✗ Prepositions: "arrive to" → "arrive at/in", "interested on" → "interested in"
+✗ Unnatural vocabulary: "I am fine" → "I'm doing well", "I want to eat" → "I'd love to try"
+✗ Japlish: "How about you think?" / "I have a travel" / "It became cold"
+✗ Weak collocations: "make homework" → "do homework", "strong rain" → "heavy rain"
+✗ Overly stiff/textbook phrasing when natural alternatives exist
+✗ Missing contractions in casual speech ("I am" → "I'm" in casual context)
+✗ Any phrasing a native speaker would rephrase without thinking
 
-Even if a sentence is technically understandable, if it sounds unnatural to a native speaker, ALWAYS flag it.
+Default assumption: learner messages almost always contain at least one improvable point. Only skip the correction block when the message is genuinely flawless native-level English.
 
-When you detect ANY issue, respond naturally first, then append this EXACT JSON block at the END of your message:
+When you detect ANY issue, append this EXACT JSON block at the END of your message (after your conversational reply):
 <correction>
 {{
   "has_mistake": true,
@@ -49,12 +47,10 @@ When you detect ANY issue, respond naturally first, then append this EXACT JSON 
 }}
 </correction>
 
-Use "is_unnatural_only": true when the grammar is technically acceptable but sounds awkward/non-native. Use false when there is a clear grammatical error.
-
-If the user's message is genuinely correct AND sounds natural to a native speaker, do NOT include a correction block. This should be relatively rare for learners — look carefully before deciding there is nothing to correct.
+"is_unnatural_only": true → grammar technically OK but sounds non-native. false → clear grammatical error.
 
 ━━━ COACHING ━━━
-Every 2-3 exchanges, when the conversation naturally allows it, add a coaching block AFTER any correction:
+Every 2-3 exchanges, append a coaching block AFTER any correction:
 <coaching>
 {{
   "tip_ja": "この文脈で役立つワンポイントアドバイス（日本語、1文）",
@@ -64,13 +60,7 @@ Every 2-3 exchanges, when the conversation naturally allows it, add a coaching b
   ]
 }}
 </coaching>
-
-Coaching guidelines:
-- Focus on phrases the user could immediately deploy in this EXACT conversation
-- Skip coaching on the very first turn or when a correction is already detailed
-- Aim for expressions that elevate the user from "textbook English" to "natural native speech"
-
-Be warm and encouraging — make learners feel supported, not embarrassed. Frame corrections as "level-ups", not failures."""
+Skip coaching on the first turn or when a correction is already detailed."""
 
 MEMORY_UPDATE_PROMPT = """Based on this conversation, extract any NEW personal information about the user.
 Return a JSON object with ONLY fields that have new/updated information (leave out unchanged fields):
@@ -176,7 +166,7 @@ def chat_with_ai(messages: list, avatar_name: str, accent: str, topic: str, leve
     completion = client.chat.completions.create(
         model='gpt-4o-mini',  # コスト・速度優先（gpt-4o比: ~15倍安価、~2倍高速）
         messages=openai_messages,
-        max_tokens=500,
+        max_tokens=450,  # 会話返答2-4文 + correctionブロックに十分な量に最適化
         temperature=0.8,
     )
 
@@ -217,30 +207,86 @@ def chat_with_ai(messages: list, avatar_name: str, accent: str, topic: str, leve
 
 
 def generate_conversation_summary(messages: list) -> dict:
-    """Generate a summary and feedback for the completed conversation."""
+    """Generate a detailed, evidence-based summary and scoring for the completed conversation.
+
+    採点の根拠を明確にするため、以下の観点で分析する:
+    - accuracy_score: 文法・語彙ミスの頻度（ミス数 / 発言数で算出）
+    - vocabulary_score: 語彙の多様性・レベル・コロケーションの自然さ
+    - fluency_score: 発言の長さ・複雑さ・会話の流れへの貢献度
+    - overall_score: 上記3スコアの加重平均
+    ※ 発音はテキストから判定不可能なため、スコアから除外して正直に伝える
+    """
+    user_messages = [m['content'] for m in messages if m.get('role') == 'user']
+    turn_count = len(user_messages)
+
     conversation_text = '\n'.join([
         f"{m['role'].upper()}: {m['content']}"
         for m in messages
         if m.get('role') in ('user', 'assistant')
     ])
 
-    prompt = f"""Analyze this English conversation and provide feedback in JSON format:
+    prompt = f"""You are an expert English teacher. Analyze this English conversation and produce detailed, evidence-based feedback.
 
+CONVERSATION:
 {conversation_text}
 
-Respond with this JSON structure:
+SCORING INSTRUCTIONS (be strict and precise — do not give inflated scores):
+
+**Step 1 — Count errors in ALL user messages:**
+Go through every USER line and list each error (grammar, vocabulary, unnatural phrasing, wrong preposition, Japlish, etc.).
+Total user turns: {turn_count}
+
+**Step 2 — Calculate scores using these formulas:**
+
+accuracy_score (文法・語彙の正確さ):
+- error_rate = total_errors / max(turn_count, 1)
+- 0 errors per turn → 95-100
+- 0.1-0.3 errors per turn → 80-94
+- 0.4-0.6 errors per turn → 65-79
+- 0.7-1.0 errors per turn → 50-64
+- 1.0+ errors per turn → 35-49
+
+vocabulary_score (語彙の豊富さ・自然さ):
+- Count unique meaningful words used by the user
+- Assess whether phrasing sounds native or textbook-level
+- Penalize heavy repetition and overuse of simple words (good, nice, like, very, etc.)
+- 90-100: rich, varied, native-level | 70-89: decent range, some awkwardness | 50-69: limited/repetitive | below 50: very basic
+
+fluency_score (流暢さ・会話への貢献):
+- Assess average sentence length and complexity
+- Did the user give substantive answers or just one/two-word replies?
+- Did they ask questions, share opinions, develop topics?
+- 90-100: engaging, developed, near-native flow | 70-89: adequate, mostly responsive | 50-69: short/choppy, needs prompting | below 50: very minimal
+
+overall_score: weighted average — accuracy×0.4 + vocabulary×0.3 + fluency×0.3 (round to integer)
+
+**Step 3 — Output JSON:**
 {{
-  "summary_ja": "会話の簡単な要約（日本語、2-3文）",
-  "strong_points_ja": ["良かった点1", "良かった点2"],
-  "improvement_areas_ja": ["改善点1", "改善点2"],
-  "overall_score": 75,
-  "fluency_score": 70,
-  "accuracy_score": 80,
-  "vocabulary_score": 75,
-  "encouragement_ja": "励ましのメッセージ（日本語）",
+  "summary_ja": "会話の内容と学習者のパフォーマンスの要約（日本語、2-3文）",
+  "strong_points_ja": [
+    "具体的な良かった点（実際の発言例を引用して説明）",
+    "具体的な良かった点2"
+  ],
+  "improvement_areas_ja": [
+    "具体的な改善点（実際のミスを日本語で例示）",
+    "具体的な改善点2"
+  ],
+  "overall_score": <integer 0-100>,
+  "fluency_score": <integer 0-100>,
+  "accuracy_score": <integer 0-100>,
+  "vocabulary_score": <integer 0-100>,
+  "score_reasoning": {{
+    "errors_found": <integer — total errors counted>,
+    "error_rate_per_turn": <float — errors/turns, rounded to 2 decimal places>,
+    "accuracy_basis": "文法ミス・不自然表現の具体的な根拠（日本語、1-2文）",
+    "vocabulary_basis": "語彙評価の根拠（日本語、1-2文）",
+    "fluency_basis": "流暢さ評価の根拠（日本語、1-2文）",
+    "pronunciation_note": "発音はテキストベースの分析では評価できないため採点対象外です。"
+  }},
+  "encouragement_ja": "具体的な次のステップを含む励ましのメッセージ（日本語、2文）",
   "useful_phrases": [
     {{
-      "english": "A natural English phrase that came up or would have been useful in this conversation",
+      "english": "A natural phrase actually used or clearly missed in this conversation",
       "japanese": "日本語訳",
       "context_ja": "どんな場面で使えるか（1文、日本語）"
     }},
@@ -257,16 +303,16 @@ Respond with this JSON structure:
   ]
 }}
 
-For useful_phrases: pick 3 phrases that were actually used in the conversation OR would have been natural to use given the topic. Focus on practical, conversational phrases the learner can immediately reuse."""
+IMPORTANT: Scores must reflect actual performance. A learner making 1 error per turn should NOT score above 65 on accuracy. Avoid score inflation."""
 
     completion = client.chat.completions.create(
-        model='gpt-4o-mini',  # サマリーはJSON出力のみでminiで十分
+        model='gpt-4o-mini',
         messages=[
-            {'role': 'system', 'content': 'You are an expert English teacher. Respond only with valid JSON.'},
+            {'role': 'system', 'content': 'You are an expert English teacher who scores learners fairly and precisely based on evidence. Respond only with valid JSON.'},
             {'role': 'user', 'content': prompt}
         ],
-        max_tokens=800,
-        temperature=0.3,
+        max_tokens=1000,
+        temperature=0.2,  # 採点の一貫性を高めるため低めに設定
         response_format={'type': 'json_object'},
     )
 
@@ -281,17 +327,35 @@ For useful_phrases: pick 3 phrases that were actually used in the conversation O
             'fluency_score': 70,
             'accuracy_score': 70,
             'vocabulary_score': 70,
+            'score_reasoning': {
+                'errors_found': 0,
+                'error_rate_per_turn': 0.0,
+                'accuracy_basis': '分析中にエラーが発生しました。',
+                'vocabulary_basis': '分析中にエラーが発生しました。',
+                'fluency_basis': '分析中にエラーが発生しました。',
+                'pronunciation_note': '発音はテキストベースの分析では評価できないため採点対象外です。',
+            },
             'encouragement_ja': '素晴らしい練習でした！続けて頑張りましょう！',
             'useful_phrases': [],
         }
 
 
 def transcribe_audio(audio_file) -> str:
-    """Transcribe audio using OpenAI Whisper."""
+    """Transcribe audio using OpenAI Whisper.
+
+    promptパラメータで「verbatim（逐語的）な文字起こし」を誘導し、
+    Whisperが自動補正・補完するのを最小限に抑える。
+    英会話練習アプリなので、学習者の実際の発話をそのまま記録することが重要。
+    """
     transcript = client.audio.transcriptions.create(
         model='whisper-1',
         file=audio_file,
         language='en',
+        prompt=(
+            "Transcribe exactly what the speaker says, word for word. "
+            "Do not correct grammar, complete sentences, or add words that were not spoken. "
+            "Preserve all hesitations, incomplete phrases, and non-native speech patterns as spoken."
+        ),
     )
     return transcript.text
 
