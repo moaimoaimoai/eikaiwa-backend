@@ -50,7 +50,7 @@ When you detect ANY issue, append this EXACT JSON block at the END of your messa
 "is_unnatural_only": true → grammar technically OK but sounds non-native. false → clear grammatical error.
 
 ━━━ COACHING ━━━
-Every 2-3 exchanges, append a coaching block AFTER any correction:
+On EVERY exchange (including the first turn), ALWAYS append a coaching block AFTER any correction:
 <coaching>
 {{
   "tip_ja": "この文脈で役立つワンポイントアドバイス（日本語、1文）",
@@ -60,7 +60,7 @@ Every 2-3 exchanges, append a coaching block AFTER any correction:
   ]
 }}
 </coaching>
-Skip coaching on the first turn or when a correction is already detailed."""
+Always include the coaching block. Never skip it."""
 
 MEMORY_UPDATE_PROMPT = """Based on this conversation, extract any NEW personal information about the user.
 Return a JSON object with ONLY fields that have new/updated information (leave out unchanged fields):
