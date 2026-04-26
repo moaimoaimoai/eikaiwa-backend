@@ -166,7 +166,7 @@ def chat_with_ai(messages: list, avatar_name: str, accent: str, topic: str, leve
     completion = client.chat.completions.create(
         model='gpt-4o-mini',  # コスト・速度優先（gpt-4o比: ~15倍安価、~2倍高速）
         messages=openai_messages,
-        max_tokens=450,  # 会話返答2-4文 + correctionブロックに十分な量に最適化
+        max_tokens=800,  # 会話返答2-4文 + correction + coaching ブロック全体に十分な量（450では不足してブロックが切れていた）
         temperature=0.8,
     )
 
