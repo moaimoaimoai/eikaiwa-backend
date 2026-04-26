@@ -1,7 +1,10 @@
 import json
+import logging
 import re
 from openai import OpenAI
 from django.conf import settings
+
+logger = logging.getLogger(__name__)
 
 client = OpenAI(api_key=settings.OPENAI_API_KEY)
 
@@ -166,11 +169,25 @@ def chat_with_ai(messages: list, avatar_name: str, accent: str, topic: str, leve
     completion = client.chat.completions.create(
         model='gpt-4o-mini',  # コスト・速度優先（gpt-4o比: ~15倍安価、~2倍高速）
         messages=openai_messages,
-        max_tokens=800,  # 会話返答2-4文 + correction + coaching ブロック全体に十分な量（450では不足してブロックが切れていた）
+        max_tokens=1200,  # 会話返答 + correction(~400) + coaching(~200) を余裕を持って収める
         temperature=0.8,
     )
 
-    full_response = completion.choices[0].message.content
+    choice = completion.choices[0]
+    full_response = choice.message.content or ''
+    finish_reason = choice.finish_reason
+    tokens_used = completion.usage.completion_tokens
+
+    # ── デバッグログ（Django サーバーのコンソールで確認できる） ──
+    logger.info(
+        '[chat_with_ai] finish_reason=%s  tokens=%d  has_correction_tag=%s  has_coaching_tag=%s',
+        finish_reason,
+        tokens_used,
+        '<correction>' in full_response,
+        '<coaching>' in full_response,
+    )
+    if finish_reason == 'length':
+        logger.warning('[chat_with_ai] ⚠️  レスポンスがmax_tokensで途中切れ！末尾: ...%s', full_response[-200:])
 
     # Parse correction if present
     correction = None
@@ -183,8 +200,9 @@ def chat_with_ai(messages: list, avatar_name: str, accent: str, topic: str, leve
             correction_json = correction_match.group(1).strip()
             correction = json.loads(correction_json)
             clean_response = full_response[:correction_match.start()].strip()
-        except (json.JSONDecodeError, KeyError):
-            pass
+            logger.info('[chat_with_ai] ✅ correction パース成功: has_mistake=%s', correction.get('has_mistake'))
+        except json.JSONDecodeError as e:
+            logger.error('[chat_with_ai] ❌ correction JSONパース失敗: %s | raw=%s', e, correction_match.group(1)[:300])
 
     # Parse coaching block (may appear even without a correction)
     coaching_match = re.search(r'<coaching>(.*?)</coaching>', full_response, re.DOTALL)
@@ -195,8 +213,14 @@ def chat_with_ai(messages: list, avatar_name: str, accent: str, topic: str, leve
             # Remove coaching block from visible response
             before_coaching = clean_response[:coaching_match.start()] if correction_match and coaching_match.start() > correction_match.start() else full_response[:coaching_match.start()]
             clean_response = before_coaching.strip()
-        except (json.JSONDecodeError, KeyError):
-            pass
+            logger.info('[chat_with_ai] ✅ coaching パース成功')
+        except json.JSONDecodeError as e:
+            logger.error('[chat_with_ai] ❌ coaching JSONパース失敗: %s | raw=%s', e, coaching_match.group(1)[:300])
+
+    if correction is None:
+        logger.warning('[chat_with_ai] ⚠️  correction=None（ブロック未検出またはパース失敗）')
+    if coaching is None:
+        logger.warning('[chat_with_ai] ⚠️  coaching=None（ブロック未検出またはパース失敗）')
 
     return {
         'response': full_response,
