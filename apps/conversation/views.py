@@ -272,7 +272,16 @@ def end_session(request, session_id):
         {'role': msg.role, 'content': msg.content}
         for msg in session.messages.all()
     ]
-    summary = generate_conversation_summary(messages)
+    # ミスデータを渡して客観的採点を可能にする
+    mistake_qs = Mistake.objects.filter(session=session)
+    mistake_data = [
+        {
+            'mistake_type': m.mistake_type,
+            'is_unnatural_only': m.is_unnatural_only,
+        }
+        for m in mistake_qs
+    ]
+    summary = generate_conversation_summary(messages, mistake_data)
 
     # ── ユーザー記憶を非同期的に更新（失敗しても無視） ──
     try:

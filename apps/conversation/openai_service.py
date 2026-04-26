@@ -5,32 +5,33 @@ from django.conf import settings
 
 client = OpenAI(api_key=settings.OPENAI_API_KEY)
 
-SYSTEM_PROMPT = """You are {avatar_name}, a warm but rigorous English conversation coach with a {accent} accent.
+SYSTEM_PROMPT = """You are {avatar_name}, a warm and friendly English conversation partner with a {accent} accent.
 
 Your role is to:
 1. Have natural, engaging conversations in English on the topic: {topic}
-2. **Rigorously check every user message** for ALL types of errors and unnatural phrasing
-3. Keep your conversational replies concise (2-4 sentences) to maintain conversation flow
-4. Ask follow-up questions to keep the conversation going
-5. Use natural, everyday English appropriate for the user's level: {level}
+2. Keep your conversational replies concise (2-4 sentences) to maintain conversation flow
+3. Ask follow-up questions to keep the conversation going
+4. Use natural, everyday English appropriate for the user's level: {level}
 
 {memory_context}
 
-━━━ CORRECTION POLICY (STRICT MODE) ━━━
-You are a strict but supportive English teacher. You MUST flag and correct ANY of the following — even when the meaning is clear:
+━━━ CRITICAL: CONVERSATION STYLE ━━━
+**NEVER mention grammar errors, mistakes, corrections, or unnatural phrasing in your conversational reply.**
+Respond as if the user spoke perfectly natural English — be a supportive conversation partner, not a teacher.
+React naturally to the CONTENT of what they said, not to HOW they said it.
+Your spoken reply must read as a completely natural response from a native speaker to a native speaker.
 
+━━━ SILENT ERROR TRACKING ━━━
+While you NEVER mention errors in conversation, you DO silently track them in a hidden JSON block.
+After your conversational reply, check the user's message for ANY of these issues:
 - Grammar errors (tense, subject-verb agreement, articles a/an/the, plural/singular, word order, missing words)
 - Wrong or awkward prepositions (e.g. "arrive to" → "arrive at/in")
-- Unnatural vocabulary or word choice (e.g. "I am fine" → "I'm doing well" / "Not bad!")
-- Japanese-English (Japlish) patterns (e.g. "How about you think?" / "I have a travel to Tokyo")
-- Overuse of simple structures when a more natural alternative exists (e.g. "It is very good" → "It's really great!" / "I'm loving it!")
-- Missing or wrong collocation (e.g. "make homework" → "do homework", "strong rain" → "heavy rain")
-- Redundant or missing contractions in casual speech
-- Awkward sentence structure that a native speaker would never say
+- Unnatural vocabulary or word choice
+- Japanese-English (Japlish) patterns
+- Wrong collocations (e.g. "make homework" → "do homework")
+- Awkward sentence structure a native speaker would never use
 
-Even if a sentence is technically understandable, if it sounds unnatural to a native speaker, ALWAYS flag it.
-
-When you detect ANY issue, respond naturally first, then append this EXACT JSON block at the END of your message:
+If you detect ANY issue, append this EXACT JSON block silently at the END — after your reply:
 <correction>
 {{
   "has_mistake": true,
@@ -51,7 +52,7 @@ When you detect ANY issue, respond naturally first, then append this EXACT JSON 
 
 Use "is_unnatural_only": true when the grammar is technically acceptable but sounds awkward/non-native. Use false when there is a clear grammatical error.
 
-If the user's message is genuinely correct AND sounds natural to a native speaker, do NOT include a correction block. This should be relatively rare for learners — look carefully before deciding there is nothing to correct.
+If the user's message is genuinely correct AND sounds natural to a native speaker, do NOT include a correction block.
 
 ━━━ COACHING ━━━
 Every 2-3 exchanges, when the conversation naturally allows it, add a coaching block AFTER any correction:
@@ -70,7 +71,7 @@ Coaching guidelines:
 - Skip coaching on the very first turn or when a correction is already detailed
 - Aim for expressions that elevate the user from "textbook English" to "natural native speech"
 
-Be warm and encouraging — make learners feel supported, not embarrassed. Frame corrections as "level-ups", not failures."""
+Be warm and encouraging — make learners feel like confident speakers."""
 
 MEMORY_UPDATE_PROMPT = """Based on this conversation, extract any NEW personal information about the user.
 Return a JSON object with ONLY fields that have new/updated information (leave out unchanged fields):
@@ -216,82 +217,159 @@ def chat_with_ai(messages: list, avatar_name: str, accent: str, topic: str, leve
     }
 
 
-def generate_conversation_summary(messages: list) -> dict:
-    """Generate a summary and feedback for the completed conversation."""
+def generate_conversation_summary(messages: list, mistake_data: list = None) -> dict:
+    """
+    Generate a summary and feedback for the completed conversation.
+    Scores are computed objectively in Python from concrete metrics.
+    AI is only asked to generate qualitative text (summary, feedback, phrases).
+    """
+    mistake_data = mistake_data or []
+
+    # ── 客観指標の計算（Python で確定的に算出） ──
+    user_messages = [m for m in messages if m.get('role') == 'user']
+    user_turns = max(len(user_messages), 1)
+
+    # ミス集計
+    errors_found = len(mistake_data)
+    grammar_errors = sum(1 for m in mistake_data if not m.get('is_unnatural_only', False))
+    unnatural_only = errors_found - grammar_errors
+    error_rate = errors_found / user_turns  # float
+
+    # 語彙分析
+    all_words = []
+    for m in user_messages:
+        words = re.findall(r"[a-zA-Z']+", m.get('content', '').lower())
+        all_words.extend(words)
+    total_words = len(all_words)
+    unique_words = len(set(all_words))
+    avg_words = total_words / user_turns  # float
+    # Type-Token Ratio（語彙の多様性）
+    ttr = unique_words / max(total_words, 1)
+
+    # ── スコア計算 ──
+    # 正確さ: ミス率に基づく (0件→95, 0.5件/turn→70, 1件/turn→45以下)
+    accuracy_score = max(45, min(98, int(95 - error_rate * 50)))
+
+    # 語彙: TTR × 発話量の複合指標
+    vocabulary_score = max(50, min(95, int(ttr * 60 + min(avg_words, 20) * 1.5 + 30)))
+
+    # 流暢さ: 平均語数に基づく（10語/turn=中級目安）
+    fluency_score = max(50, min(95, int(50 + avg_words * 2.5)))
+
+    # 総合: 重み付き平均
+    overall_score = max(45, min(98, int(accuracy_score * 0.35 + vocabulary_score * 0.30 + fluency_score * 0.35)))
+
+    # ── 採点根拠（必ず数値型で格納） ──
+    score_reasoning = {
+        'errors_found': int(errors_found),
+        'error_rate_per_turn': round(float(error_rate), 2),
+        'accuracy_basis': (
+            f"文法ミス {grammar_errors}件・不自然表現 {unnatural_only}件"
+            f"（合計 {errors_found}件 / {user_turns}ターン、{error_rate:.1f}件/ターン）"
+        ),
+        'vocabulary_basis': (
+            f"使用語彙 {unique_words}種 / {total_words}語"
+            f"（多様性 {ttr:.0%}）、平均 {avg_words:.1f}語/ターン"
+        ),
+        'fluency_basis': (
+            f"平均発話量 {avg_words:.1f}語/ターン"
+            f"（目安：10語以上=流暢、15語以上=上級）"
+        ),
+        'pronunciation_note': (
+            "※発音スコアは音声認識の精度に基づく推定値です。"
+            "実際の発音評価にはコーチによるレッスンをご検討ください。"
+        ),
+    }
+
+    # ── AI には定性テキストのみ生成させる ──
     conversation_text = '\n'.join([
         f"{m['role'].upper()}: {m['content']}"
         for m in messages
         if m.get('role') in ('user', 'assistant')
     ])
 
-    prompt = f"""Analyze this English conversation and provide feedback in JSON format:
+    prompt = f"""You are an expert English teacher for Japanese learners. Analyze this conversation.
 
 {conversation_text}
 
-Respond with this JSON structure:
+Learner stats for context (already scored separately — do NOT output scores):
+- Turns: {user_turns}
+- Errors: {errors_found} ({grammar_errors} grammar, {unnatural_only} unnatural)
+- Error rate: {error_rate:.1f}/turn
+- Avg words/turn: {avg_words:.1f}
+- Vocabulary diversity: {ttr:.0%}
+
+Provide qualitative feedback in this JSON (Japanese text only, no score fields):
 {{
-  "summary_ja": "会話の簡単な要約（日本語、2-3文）",
-  "strong_points_ja": ["良かった点1", "良かった点2"],
-  "improvement_areas_ja": ["改善点1", "改善点2"],
-  "overall_score": 75,
-  "fluency_score": 70,
-  "accuracy_score": 80,
-  "vocabulary_score": 75,
-  "encouragement_ja": "励ましのメッセージ（日本語）",
+  "summary_ja": "会話の要約（日本語、2-3文）",
+  "strong_points_ja": ["具体的な良かった点1", "具体的な良かった点2"],
+  "improvement_areas_ja": ["具体的な改善点1（実例を含む）", "具体的な改善点2（実例を含む）"],
+  "encouragement_ja": "前向きな励ましのメッセージ（日本語、1-2文）",
   "useful_phrases": [
     {{
-      "english": "A natural English phrase that came up or would have been useful in this conversation",
+      "english": "A phrase actually used or naturally applicable in this conversation",
       "japanese": "日本語訳",
-      "context_ja": "どんな場面で使えるか（1文、日本語）"
+      "context_ja": "どんな場面で使えるか（1文）"
     }},
     {{
-      "english": "Another useful phrase from this conversation's topic",
+      "english": "Another practical phrase for this conversation topic",
       "japanese": "日本語訳",
-      "context_ja": "どんな場面で使えるか（1文、日本語）"
+      "context_ja": "どんな場面で使えるか（1文）"
     }},
     {{
       "english": "A third useful phrase",
       "japanese": "日本語訳",
-      "context_ja": "どんな場面で使えるか（1文、日本語）"
+      "context_ja": "どんな場面で使えるか（1文）"
     }}
   ]
-}}
-
-For useful_phrases: pick 3 phrases that were actually used in the conversation OR would have been natural to use given the topic. Focus on practical, conversational phrases the learner can immediately reuse."""
-
-    completion = client.chat.completions.create(
-        model='gpt-4o-mini',  # サマリーはJSON出力のみでminiで十分
-        messages=[
-            {'role': 'system', 'content': 'You are an expert English teacher. Respond only with valid JSON.'},
-            {'role': 'user', 'content': prompt}
-        ],
-        max_tokens=800,
-        temperature=0.3,
-        response_format={'type': 'json_object'},
-    )
+}}"""
 
     try:
-        return json.loads(completion.choices[0].message.content)
+        completion = client.chat.completions.create(
+            model='gpt-4o-mini',
+            messages=[
+                {'role': 'system', 'content': 'You are an expert English teacher for Japanese learners. Respond only with valid JSON.'},
+                {'role': 'user', 'content': prompt}
+            ],
+            max_tokens=800,
+            temperature=0.3,
+            response_format={'type': 'json_object'},
+        )
+        ai_result = json.loads(completion.choices[0].message.content)
     except Exception:
-        return {
+        ai_result = {
             'summary_ja': '会話が完了しました。',
-            'strong_points_ja': ['よく頑張りました！'],
-            'improvement_areas_ja': ['継続して練習しましょう'],
-            'overall_score': 70,
-            'fluency_score': 70,
-            'accuracy_score': 70,
-            'vocabulary_score': 70,
+            'strong_points_ja': ['よく頑張りました！継続は力です。'],
+            'improvement_areas_ja': ['より長い文で表現する練習をしましょう。'],
             'encouragement_ja': '素晴らしい練習でした！続けて頑張りましょう！',
             'useful_phrases': [],
         }
 
+    # 客観スコア + 採点根拠を上書きマージ（AI が変更できないよう最後に代入）
+    return {
+        **ai_result,
+        'overall_score': overall_score,
+        'fluency_score': fluency_score,
+        'accuracy_score': accuracy_score,
+        'vocabulary_score': vocabulary_score,
+        'score_reasoning': score_reasoning,
+    }
+
 
 def transcribe_audio(audio_file) -> str:
-    """Transcribe audio using OpenAI Whisper."""
+    """Transcribe audio using OpenAI Whisper.
+    prompt パラメータで「そのままの音声を文字起こしする」よう誘導し、
+    Whisper が自動補正・改善するのを防ぐ。
+    """
     transcript = client.audio.transcriptions.create(
         model='whisper-1',
         file=audio_file,
         language='en',
+        prompt=(
+            "Transcribe verbatim exactly what is spoken, including any grammatical errors, "
+            "unnatural phrasing, or non-native expressions. Do not correct or improve the speech. "
+            "This is an English learner practicing conversation."
+        ),
     )
     return transcript.text
 
