@@ -116,7 +116,7 @@ def get_system_prompt(
         'daily_life': 'daily life, routines, and everyday activities',
         'travel': 'travel experiences, destinations, and cultural differences',
         'business': 'business, work, and professional topics',
-        'culture': 'culture, traditions, food, and lifestyle',
+        'school': 'school life, studying, teachers, clubs, school memories, and education',
         'hobby': 'hobbies, interests, sports, and entertainment',
     }
     topic_context = topic_contexts.get(topic, 'any topic')

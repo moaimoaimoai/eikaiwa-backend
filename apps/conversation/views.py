@@ -17,93 +17,296 @@ from apps.phrases.models import SavedPhrase
 # 1セッションあたりのユーザー発言上限（フロントエンドの MAX_TURNS と合わせる）
 MAX_TURNS_PER_SESSION = 10
 
-# ── 内部テーマリスト（フリー会話の多様性確保用）──
+# ── 内部テーマ辞書（トピック別・多様性確保用）──
 # daily_topic_label が指定されていない通常会話でも毎回違う話題から始まるようにするための内部ヒント集。
-# (opening_question_seed, conversation_hint) のタプル形式。ユーザーには表示されない。
-INTERNAL_TOPICS = [
-    # 日常生活
-    ("your morning routine and what makes it feel good or terrible", "morning habits"),
-    ("your favorite local restaurants or hidden food spots nearby", "local food"),
-    ("how you usually spend your evenings after work or study", "evening routine"),
-    ("the most annoying and best things about commuting", "commuting life"),
-    ("your go-to comfort food and why it makes you feel better", "comfort food"),
-    ("what your home or room says about your personality", "home and space"),
-    ("how you handle a rainy day — do you love it or hate it?", "weather and mood"),
-    ("your relationship with your smartphone — can you go a day without it?", "digital habits"),
-    ("your shopping style — do you browse for hours or go straight for what you need?", "shopping habits"),
-    ("how you usually wind down before bed", "bedtime routine"),
-    # 旅行・場所
-    ("a trip or destination that surprised you in an unexpected way", "travel surprises"),
-    ("a place on your bucket list and why it calls to you", "dream destinations"),
-    ("the best and worst things about living in Japan compared to other places", "Japan life"),
-    ("a small town or lesser-known spot you would recommend to a traveler", "hidden travel gems"),
-    ("if you could live in any city in the world for one year, where would it be?", "city life"),
-    ("how traveling changes the way you see things back home", "travel perspective"),
-    ("your ideal type of holiday — relaxing beach, adventure, or cultural exploration?", "holiday style"),
-    # エンタメ・趣味
-    ("a movie, drama, or anime that has stayed with you long after watching it", "memorable stories"),
-    ("music you listen to when you need energy versus when you want to relax", "music moods"),
-    ("a book, manga, or podcast that completely changed how you think", "mind-changing media"),
-    ("your relationship with video games — casual player, hardcore gamer, or non-player?", "gaming life"),
-    ("if you could master any creative skill instantly, what would you choose?", "creative skills"),
-    ("a hobby you have tried and abandoned, and why", "abandoned hobbies"),
-    ("your favorite season and what you most love doing in it", "seasons"),
-    ("what you do when you need a creative outlet", "creativity"),
-    # 食・料理
-    ("a dish you can cook really well and are proud of", "cooking pride"),
-    ("the weirdest food combination you secretly enjoy", "unusual food"),
-    ("your coffee or tea preferences — and whether you could survive without it", "coffee and tea"),
-    ("a cuisine from another country you could eat every day", "world cuisine"),
-    ("what cooking at home means to you — is it relaxing or a chore?", "home cooking"),
-    # 健康・ライフスタイル
-    ("your approach to exercise — do you love it, hate it, or find balance somewhere?", "exercise habits"),
-    ("how you manage stress and what actually works for you", "stress management"),
-    ("sleep — are you a night owl, early bird, or somewhere in between?", "sleep habits"),
-    ("small habits that have made a big difference in your life", "life-changing habits"),
-    ("your thoughts on social media — helpful tool, time sink, or both?", "social media life"),
-    # 仕事・学び
-    ("what you enjoy most and least about your current job or studies", "work and study"),
-    ("a skill you are currently trying to improve and how it's going", "current goals"),
-    ("how you stay motivated when things get difficult", "motivation"),
-    ("the best lesson you have learned from a mistake", "learning from mistakes"),
-    ("what an ideal workday looks like for you", "ideal work"),
-    ("if you could switch careers for a year with no risk, what would you try?", "career dreams"),
-    # 人間関係
-    ("what qualities you value most in a close friend", "friendship values"),
-    ("how you handle disagreements — do you speak up or avoid conflict?", "conflict style"),
-    ("a compliment someone gave you that you still think about", "memorable compliments"),
-    ("how technology has changed the way you stay in touch with people", "staying connected"),
-    ("what your relationship with social media says about modern friendship", "digital friendship"),
-    # 思考・価値観
-    ("something you believed strongly as a kid but now think differently about", "changed beliefs"),
-    ("what success means to you — and whether that definition has changed", "definition of success"),
-    ("if you could give your younger self one piece of advice, what would it be?", "advice to self"),
-    ("a decision you made that turned out better than you expected", "good decisions"),
-    ("what you think about when you cannot sleep", "late night thoughts"),
-    ("what happiness looks like in your day-to-day life", "everyday happiness"),
-    # テクノロジー・未来
-    ("how AI is already changing your daily life, even in small ways", "AI in daily life"),
-    ("a technology you are excited about and one you are worried about", "tech hopes and fears"),
-    ("what you think the world will look like in 20 years", "future world"),
-    ("how you feel about remote work or online study — pro or con?", "remote life"),
-    # 季節・文化
-    ("your favorite Japanese tradition or seasonal event and what it means to you", "Japanese traditions"),
-    ("how you celebrate your birthday — big party, quiet day, or skip it entirely?", "birthdays"),
-    ("what summer means to you beyond just the heat", "summer vibes"),
-    ("a cultural difference between Japan and other countries that fascinates you", "cultural differences"),
-    # 動物・自然
-    ("your relationship with animals — do you have or want a pet?", "pets and animals"),
-    ("the most beautiful natural place you have ever seen", "nature beauty"),
-    ("how spending time in nature makes you feel", "nature and mood"),
-    # ユニーク・おもしろい
-    ("a superpower you would choose and how you would actually use it in real life", "superpowers"),
-    ("the best and worst trends you have seen come and go", "trends"),
-    ("if you could have dinner with anyone — living or historical — who would it be?", "dinner with anyone"),
-    ("the strangest or funniest thing that has happened to you recently", "funny moments"),
-    ("if you could instantly speak any language fluently, which one and why?", "language dreams"),
-    ("your hidden talent that most people do not know about", "hidden talents"),
-    ("what you would do with a completely free day with no obligations", "perfect free day"),
-]
+# キーは conversation topic。(opening_question_seed, conversation_hint) のタプルリスト。
+# ユーザーには表示されない。
+INTERNAL_TOPICS = {
+    'free': [
+        # ── 思い出・人生 ──
+        ("a childhood memory that still makes you smile or laugh", "childhood memories"),
+        ("something on your bucket list and what is stopping you from doing it", "bucket list"),
+        ("a moment in your life that completely changed your direction", "life-changing moments"),
+        ("the best piece of advice you have ever received and who gave it", "life advice"),
+        ("what success looks like to you — and whether that has changed over time", "definition of success"),
+        ("if you could give your younger self one piece of advice, what would it be?", "advice to self"),
+        ("something you believed strongly as a kid but now see differently", "changed beliefs"),
+        ("a decision you almost did not make that turned out to be one of the best", "good decisions"),
+        ("the most unexpected thing you have ever learned about yourself", "self-discovery"),
+        ("a turning point you almost missed — and what reminded you to take it", "turning points"),
+        # ── 想像・仮定 ──
+        ("your hidden talent that most people do not know about", "hidden talents"),
+        ("if you could have dinner with anyone — living or from history — who would it be?", "dinner with anyone"),
+        ("a superpower you would choose and how you would use it in everyday life", "superpowers"),
+        ("if you could instantly speak any language fluently, which one and why?", "language dreams"),
+        ("what you would do if you won the lottery tomorrow — first 24 hours", "lottery dreams"),
+        ("if you could swap lives with someone for a week, who and why?", "life swap"),
+        ("the era in history you would most want to visit — and the danger you would face", "time travel"),
+        ("if you could redesign one thing about modern society, what would it be?", "redesigning society"),
+        ("if money and time were no limit, what project would you start tomorrow?", "dream project"),
+        ("what animal best represents your personality and why?", "spirit animal"),
+        # ── 価値観・感情 ──
+        ("what you would do with one completely free day — no responsibilities at all", "perfect free day"),
+        ("something that always makes you laugh, no matter how many times you see it", "things that make you laugh"),
+        ("what happiness looks like in your day-to-day life — the small things", "everyday happiness"),
+        ("the strangest or funniest thing that has happened to you recently", "funny moments"),
+        ("what you tend to think about when you cannot sleep at night", "late night thoughts"),
+        ("your life's soundtrack — the songs that define different chapters", "personal soundtrack"),
+        ("something you think is hugely overrated — and something underrated", "over and underrated"),
+        ("how you would describe your current life chapter if it were a movie title", "life chapter"),
+        ("the best compliment you have ever given someone — and their reaction", "giving compliments"),
+        ("a food or experience you were convinced you would hate but ended up loving", "surprised by enjoyment"),
+        # ── 日常の発見 ──
+        ("if you could live anywhere in the world for one year, where and why?", "dream place to live"),
+        ("what you think future generations will look back on us and find bizarre", "future perspective"),
+        ("a skill or knowledge area you wish you had started learning earlier", "skills to start earlier"),
+        ("the most useful app or tool in your life right now — and one you deleted", "digital tools"),
+        ("how you would describe your personality to someone who has never met you", "describing yourself"),
+        ("what small thing in daily life you are genuinely grateful for", "small gratitude"),
+        ("your most used phrase or expression and where it came from", "favourite phrases"),
+        ("something you can do that you suspect most people around you cannot", "unique abilities"),
+        ("the movie or show you keep recommending but nobody watches", "underrated recommendations"),
+        ("what a perfect Sunday morning looks like for you, in detail", "perfect Sunday"),
+    ],
+    'daily_life': [
+        # ── 朝・夜のルーティン ──
+        ("your morning routine and the one thing that can make or break your whole day", "morning habits"),
+        ("how you usually unwind in the evening after a long day", "evening routine"),
+        ("what you usually have for breakfast — and whether it actually starts your day well", "breakfast habits"),
+        ("sleep habits — night owl, early bird, or fighting nature every day?", "sleep habits"),
+        ("the ritual that marks the end of your workday or school day", "end-of-day ritual"),
+        ("how the seasons affect your daily mood and energy levels", "seasons and mood"),
+        # ── 食・料理 ──
+        ("your go-to comfort food and the story behind why you love it", "comfort food"),
+        ("your coffee or tea ritual — and what would happen if you had to give it up", "coffee and tea"),
+        ("how you approach grocery shopping and cooking at home", "home cooking"),
+        ("a local restaurant or café you would always recommend to visitors", "local favorites"),
+        ("your relationship with cooking — is it joy, duty, or something you outsource?", "cooking relationship"),
+        ("the most satisfying meal you have cooked for yourself recently", "home cooking wins"),
+        # ── デジタル・スマホ ──
+        ("your relationship with your smartphone — could you survive a weekend without it?", "digital habits"),
+        ("your most used app and what it says about your priorities", "top app"),
+        ("how you feel about technology overall — does it serve you or rule you?", "tech relationship"),
+        ("how often you check the news and how it affects your mood", "news habits"),
+        # ── 家・空間 ──
+        ("what your home or room says about your personality", "home and space"),
+        ("your approach to keeping your space tidy — minimalist, organized chaos, or total mess?", "tidying up"),
+        ("what your desk or workspace looks like right now and what it says about you", "workspace"),
+        ("the most useful life skill you learned from a family member at home", "home skills"),
+        # ── 街・移動 ──
+        ("the most annoying and the best things about your daily commute", "commuting life"),
+        ("your neighborhood — the hidden spots and what makes it feel like home", "local life"),
+        ("your shopping style — do you browse for hours or go straight for what you need?", "shopping habits"),
+        ("how you feel about your neighborhood and whether you would ever move", "neighborhood feelings"),
+        # ── 週末・時間の使い方 ──
+        ("your weekend routine — do you recharge alone or fill it with social plans?", "weekend life"),
+        ("how you handle an unexpectedly free afternoon — what do you do first?", "free time"),
+        ("the errands you secretly enjoy and the ones you keep putting off forever", "errands"),
+        ("your strategy for remembering things — lists, apps, notes, or pure willpower?", "memory strategies"),
+        # ── ストレス・メンタル ──
+        ("how you handle stress in the middle of a busy day", "daily stress"),
+        ("a pet peeve about daily life that drives you genuinely crazy", "daily pet peeves"),
+        ("the small daily pleasures that reliably make life feel good", "small pleasures"),
+        ("the part of your day you look forward to the most", "daily highlight"),
+        # ── お金・生活 ──
+        ("your approach to managing money day-to-day — careful planner or go-with-the-flow?", "money management"),
+        ("the most satisfying purchase you have made recently — and why it was worth it", "good purchases"),
+        ("a habit you have been trying to build for months with limited success", "habit building"),
+        ("your approach to making new friends as an adult — harder than it sounds?", "adult friendships"),
+        # ── 季節・暮らし ──
+        ("your feelings about winter — cozy hibernation season or something to survive?", "winter feelings"),
+        ("how you deal with being stuck indoors on a rainy day", "rainy day routine"),
+        ("the last thing you repaired instead of throwing away — and whether it worked", "repair culture"),
+        ("your approach to planning the week ahead — Sunday evening ritual or total chaos?", "weekly planning"),
+    ],
+    'travel': [
+        # ── 旅の思い出 ──
+        ("a trip or destination that surprised you in a way you did not expect", "travel surprises"),
+        ("the most delicious food you have ever discovered while traveling", "food on the road"),
+        ("a travel disaster or misadventure that became a funny story later", "travel mishaps"),
+        ("a place you have been to that you would love to go back to someday", "places to revisit"),
+        ("the strangest or most unexpected experience you have had while traveling", "weird travel moments"),
+        ("a destination that felt surprisingly like home even though it was far away", "home away from home"),
+        ("your most memorable conversation with a stranger you met while traveling", "stranger encounters"),
+        ("a historical site or landmark you visited that genuinely moved you", "moving landmarks"),
+        # ── 旅のスタイル ──
+        ("your dream travel destination and what draws you there", "dream destinations"),
+        ("how you prefer to travel — solo, with friends, with family — and why", "travel style"),
+        ("your packing style — carry-on only minimalist or prepared for every scenario?", "packing habits"),
+        ("your favorite type of accommodation — hotel, Airbnb, hostel, or camping?", "accommodation style"),
+        ("how you research and plan a trip — detailed itinerary or completely go with the flow?", "travel planning"),
+        ("your budget approach to travel — splurge on experiences or save wherever possible?", "travel budget"),
+        ("seasonal travel preferences — summer beach, autumn leaves, winter escape, or spring blossoms?", "seasonal travel"),
+        ("whether you prefer to explore one place deeply or hit many places quickly", "travel depth vs breadth"),
+        # ── 文化・人 ──
+        ("a cultural difference you noticed while traveling that genuinely surprised you", "cultural surprises"),
+        ("the biggest cultural mistake you made while abroad and what you learned", "cultural mistakes"),
+        ("the best way to connect with locals when you are traveling somewhere new", "connecting with locals"),
+        ("how Japan looks through the eyes of foreign visitors — things they seem to love", "japan through foreign eyes"),
+        # ── 国内・海外 ──
+        ("the hidden gem in your own city or region that visitors almost always miss", "local gems"),
+        ("if you could live in a foreign country for one year, where and why?", "living abroad"),
+        ("your dream road trip — route, companions, and the ultimate playlist", "road trip dreams"),
+        ("the travel documentary, book, or video that made you desperate to visit somewhere", "travel inspiration"),
+        # ── 旅の実用 ──
+        ("how traveling changes the way you see your everyday life when you come home", "travel perspective"),
+        ("how you stay healthy and stick to routines while traveling — or do you abandon them?", "travel routines"),
+        ("your experience with language barriers while traveling and how you got through", "language barriers"),
+        ("the travel app or trick that completely changed how you explore new places", "travel hacks"),
+        ("your experience with public transport abroad — confusion, adventure, or both?", "transport abroad"),
+        ("what you always bring back from a trip as a souvenir — and what you wish you had bought", "travel souvenirs"),
+        # ── 空想 ──
+        ("if you could time travel to visit any era and place in history, where would you go?", "time travel destinations"),
+        ("a tourist spot that was far more impressive than the hype — or a total letdown", "tourist spot reality"),
+        ("the food from another country you now cook at home because you miss it", "bringing food home"),
+        ("what a perfect day in your favorite city in the world looks like", "perfect city day"),
+        ("the city you have visited that surprised you most with its atmosphere and vibe", "surprising cities"),
+        ("the souvenir you regret not buying and still think about occasionally", "souvenir regrets"),
+        ("how you capture memories while traveling — photos, journals, or just being present?", "capturing travel memories"),
+        ("your experience with traveling on a tight budget and what you discovered", "budget travel"),
+        ("the longest journey you have ever taken and how you kept yourself going", "long journeys"),
+        ("if you could go on any trip starting tomorrow, what would it look like?", "spontaneous trip"),
+    ],
+    'business': [
+        # ── 仕事の現実 ──
+        ("what you enjoy most and least about your current work or field of study", "work reality"),
+        ("your ideal work environment — open office, quiet corner, remote, or hybrid?", "ideal workspace"),
+        ("how you manage your energy and focus during a long workday", "work productivity"),
+        ("your experience with remote or hybrid work — what genuinely works and what does not", "remote work"),
+        ("your strategy for handling tight deadlines and high-pressure moments", "deadline management"),
+        ("how workplace culture affects your motivation and daily performance", "workplace culture"),
+        ("the most valuable lesson a failure or mistake at work taught you", "learning from work failure"),
+        ("how you handle a colleague or work situation that genuinely frustrates you", "workplace frustration"),
+        # ── キャリア・成長 ──
+        ("a professional challenge you faced that turned into an unexpected opportunity", "professional growth"),
+        ("the mentors or role models who have shaped how you work and think", "career mentors"),
+        ("a career path you seriously considered but did not take — any regrets?", "career paths"),
+        ("the moment you realized what kind of work actually suits your personality", "career self-discovery"),
+        ("your experience with job hunting, internships, or changing roles", "job hunting"),
+        ("the professional skill that surprised you by being more important than expected", "surprising skills"),
+        ("what you wish schools taught more about professional and working life", "missing education"),
+        ("how you approach learning a completely new skill at work or for your career", "learning at work"),
+        # ── コミュニケーション ──
+        ("how you prepare for an important presentation, meeting, or difficult conversation", "presentation prep"),
+        ("your approach to networking — do you enjoy it or find it genuinely exhausting?", "networking"),
+        ("your communication style at work — email, chat, calls, or face-to-face?", "workplace communication"),
+        ("how you handle giving and receiving feedback — easy or unexpectedly hard?", "feedback culture"),
+        ("the work conversation you had that you found unexpectedly inspiring", "inspiring conversations"),
+        # ── AI・未来 ──
+        ("how AI and automation are already changing your work or field right now", "AI and work"),
+        ("what you think the office and workplace will look like in 2035", "future of work"),
+        ("your experience with or thoughts about side projects and freelance work", "side projects"),
+        # ── リーダーシップ・組織 ──
+        ("what leadership means to you and the qualities you most admire in a leader", "leadership"),
+        ("the best team you have ever been part of and what made it work so well", "great teams"),
+        ("what the perfect manager looks like to you — and how close your reality is", "ideal manager"),
+        ("how you organize your tasks and priorities — apps, paper, or mental juggling?", "task management"),
+        ("your morning work ritual before the real work of the day begins", "morning work ritual"),
+        # ── ビジネス・お金 ──
+        ("a company or leader you genuinely admire and what sets them apart", "business inspiration"),
+        ("a business idea you have had but never acted on — what stopped you?", "entrepreneur dreams"),
+        ("your relationship with money — saver, spender, investor, or undecided?", "money relationship"),
+        ("business travel — the surprisingly good and surprisingly bad parts", "business travel"),
+        ("work-life balance — how you actually achieve it versus how it is supposed to look", "work-life balance"),
+        ("what you would say in your ideal job interview if you could be completely honest", "honest job interview"),
+        ("how you stay updated on news, trends, and changes in your field", "staying current"),
+        ("the biggest challenge facing your industry or field right now", "industry challenges"),
+        ("your experience with performance reviews — useful, stressful, or both?", "performance reviews"),
+        ("what you would change about the way businesses are typically run", "business improvement"),
+    ],
+    'school': [
+        # ── 高校以前の思い出 ──
+        ("your favorite subject in school and what made it genuinely exciting", "favorite subject"),
+        ("the teacher who had the biggest impact on you and what made them memorable", "memorable teacher"),
+        ("your school lunch memories — kyushoku, bento boxes, or cafeteria chaos?", "school lunch"),
+        ("the club or after-school activity that most defined your school years", "club activities"),
+        ("the most stressful exam you ever faced and how you got through it", "exam stress"),
+        ("a school rule or tradition that felt strange but you now understand — or still find absurd", "school rules"),
+        ("your best memory from a school trip or class excursion", "school trips"),
+        ("the most embarrassing thing that ever happened to you at school", "school embarrassments"),
+        ("school festivals, sports days, or cultural events that still stand out", "school events"),
+        ("the teacher who made you dread a class and what that taught you about learning", "difficult teachers"),
+        ("the subject you never expected to use in real life but turned out surprisingly useful", "unexpectedly useful subjects"),
+        ("if you could go back to school for one day, what would you pay attention to?", "school nostalgia"),
+        # ── 勉強・習慣 ──
+        ("how you used to study — cramming the night before or steady and organized?", "study habits"),
+        ("a subject you struggled with and how you eventually dealt with it", "difficult subjects"),
+        ("the friendship that started at school and what made it last — or not", "school friendships"),
+        ("what you wish had been different about your education", "education regrets"),
+        ("the subject you wish your school had offered but never did", "missing subjects"),
+        ("how your school experience shaped the way you learn and work today", "school impact"),
+        # ── 大学生活 ──
+        ("your university campus — what you love about it and what drives you crazy", "campus life"),
+        ("how you chose your university major and whether you would make the same choice today", "choosing a major"),
+        ("the seminar, lab, or research group you joined — how you chose it and what you found", "seminar and lab"),
+        ("pulling an all-nighter before an assignment deadline — worth it or a disaster?", "all-nighters"),
+        ("your part-time job during school and the most memorable thing it taught you", "student part-time work"),
+        ("joining a university club or circle — how you chose and what happened next", "university clubs"),
+        ("the professor who stood out most at university and why they were unforgettable", "university professors"),
+        ("living alone for the first time — the freedom and the unexpected challenges", "living alone"),
+        ("making friends at university — harder or easier than you expected?", "university friendships"),
+        ("your university cafeteria — underrated hidden gem or place you needed to escape?", "university cafeteria"),
+        ("the assignment or report you procrastinated on until the absolute last minute", "procrastination"),
+        ("studying abroad or thinking about it — what draws you to the idea?", "study abroad interest"),
+        ("the moment university felt completely different from high school — what changed?", "university vs high school"),
+        ("how internships changed the way you think about your future career", "internships"),
+        ("the course you signed up for expecting nothing but ended up being genuinely fascinating", "surprising university courses"),
+        ("how you manage time between classes, clubs, part-time work, and a social life", "student time management"),
+        ("entrance exams — the experience of preparing, the stress, and the relief of finishing", "entrance exams"),
+        ("what graduation means to you and the mix of excitement and uncertainty it brings", "graduation feelings"),
+        ("your advice to someone just starting their first year at university", "university advice"),
+        ("the student council, campus event, or university project that you got involved in", "student activities"),
+    ],
+    'hobby': [
+        # ── メイン趣味 ──
+        ("your current main hobby and the moment you first got seriously into it", "main hobby"),
+        ("a hobby you tried, loved briefly, then completely abandoned — and honestly, why", "abandoned hobbies"),
+        ("a creative skill you would love to master if time and money were absolutely no issue", "dream creative skill"),
+        ("the hobby you would pursue full-time if money were not a concern", "dream hobby"),
+        ("a hobby that costs way too much money but you cannot seem to stop doing", "expensive hobbies"),
+        ("hobbies you do best alone versus ones you really prefer sharing with other people", "solo vs social hobbies"),
+        ("something you collect or used to collect and what the appeal was at the time", "collecting"),
+        ("a seasonal hobby or activity you genuinely look forward to every single year", "seasonal hobbies"),
+        ("the hobby that has taught you the most patience of anything in your life", "patience through hobbies"),
+        ("a hobby you share with someone special and how it changed the relationship", "shared hobbies"),
+        # ── エンタメ ──
+        ("your relationship with video games — casual player, dedicated gamer, or non-player?", "gaming"),
+        ("a movie, drama, or anime that stayed with you long after you finished it", "memorable stories"),
+        ("a book, manga, or podcast that genuinely changed the way you think", "mind-changing media"),
+        ("a YouTube channel or creator you have watched so much it feels like you know them", "favourite creators"),
+        ("your relationship with anime — casual watcher, devoted fan, or curious outsider?", "anime relationship"),
+        ("the concert, live event, or performance that was absolutely unforgettable", "live events"),
+        ("board games, card games, or party games — do you love them or hate the losing part?", "tabletop games"),
+        ("the movie or show you found by complete accident and could not stop watching", "accidental discoveries"),
+        # ── 音楽 ──
+        ("the music you listen to when you need energy versus when you want to truly relax", "music for moods"),
+        ("how you discover new music — algorithms, recommendations, or old-fashioned browsing?", "discovering music"),
+        ("the concert or live performance you want to attend before anything else", "concert bucket list"),
+        # ── 創作・スキル ──
+        ("cooking or baking experiments — your proudest creation and your most spectacular disaster", "cooking adventures"),
+        ("photography — do you love capturing moments or prefer to just be fully present?", "photography"),
+        ("a DIY or craft project you are genuinely proud of or secretly want to try", "DIY projects"),
+        ("the craft or creative skill you do just for yourself, never really to show anyone", "private creativity"),
+        ("your favorite way to be creative when you are short on time and energy", "quick creativity"),
+        ("do you prefer making and creating things, or experiencing things others have made?", "making vs experiencing"),
+        ("your history with reading — lifelong bookworm or someone who discovered it later in life?", "reading history"),
+        # ── アウトドア・健康 ──
+        ("your fitness routine — do you love it, dread it, or still trying to actually build one?", "fitness life"),
+        ("hiking, cycling, or any outdoor activity you genuinely enjoy or have always wanted to try", "outdoor activities"),
+        ("plants and gardening — confirmed green thumb or a graveyard of good intentions?", "gardening"),
+        ("yoga, meditation, or mindfulness — something you genuinely swear by or are just curious about?", "mindfulness"),
+        # ── 飲み物・食 ──
+        ("your relationship with coffee, tea, or another drink you have developed a genuine appreciation for", "drink culture"),
+        ("the sport you have never tried but secretly think you might actually be good at", "untried sports"),
+        # ── SNS・情報 ──
+        ("how social media has changed the way you pursue, share, or talk about your hobbies", "social media and hobbies"),
+        ("your strategy for finding the next great book, movie, show, or album to enjoy", "finding new media"),
+        ("the most useful thing a hobby has taught you that applies to everyday life", "hobby life lessons"),
+        ("what you wish more people understood or appreciated about your favourite hobby", "hobby advocacy"),
+        ("the event, festival, or competition in your hobby world you would love to attend someday", "hobby events"),
+        ("a creative project that exists only in your head right now — what is it?", "dream creative project"),
+    ],
+}
 
 
 class SessionListView(generics.ListAPIView):
@@ -163,7 +366,9 @@ def start_session(request):
         )
     else:
         # 内部テーマをランダム選択して会話の多様性を確保（ユーザーには表示されない）
-        internal_seed, internal_hint = random.choice(INTERNAL_TOPICS)
+        # 選択トピックに合ったカテゴリから選ぶ。対応なければ 'free' にフォールバック
+        topic_pool = INTERNAL_TOPICS.get(topic, INTERNAL_TOPICS['free'])
+        internal_seed, internal_hint = random.choice(topic_pool)
         opening_prompt = (
             f'Please start our conversation with a warm, natural greeting and ONE engaging opening question about '
             f'{internal_seed}. '

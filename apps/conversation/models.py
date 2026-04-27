@@ -10,7 +10,7 @@ class ConversationSession(models.Model):
         ('daily_life', 'Daily Life'),
         ('travel', 'Travel'),
         ('business', 'Business'),
-        ('culture', 'Culture'),
+        ('school', 'School'),
         ('hobby', 'Hobbies'),
     ]
 
