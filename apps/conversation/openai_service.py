@@ -367,18 +367,14 @@ Provide qualitative feedback in this JSON (Japanese text only, no score fields):
 
 def transcribe_audio(audio_file) -> str:
     """Transcribe audio using OpenAI Whisper.
-    prompt パラメータで「そのままの音声を文字起こしする」よう誘導し、
-    Whisper が自動補正・改善するのを防ぐ。
+    temperature=0 で確定的な出力にし、prompt なしで Whisper の
+    自動補正・改善を最小限に抑える（verbatim に近い文字起こし）。
     """
     transcript = client.audio.transcriptions.create(
         model='whisper-1',
         file=audio_file,
         language='en',
-        prompt=(
-            "Transcribe verbatim exactly what is spoken, including any grammatical errors, "
-            "unnatural phrasing, or non-native expressions. Do not correct or improve the speech. "
-            "This is an English learner practicing conversation."
-        ),
+        temperature=0,
     )
     return transcript.text
 
