@@ -1,5 +1,6 @@
 import base64
 import io
+import random
 from datetime import datetime
 from django.utils import timezone
 from rest_framework import generics, status
@@ -15,6 +16,94 @@ from apps.phrases.models import SavedPhrase
 
 # 1セッションあたりのユーザー発言上限（フロントエンドの MAX_TURNS と合わせる）
 MAX_TURNS_PER_SESSION = 10
+
+# ── 内部テーマリスト（フリー会話の多様性確保用）──
+# daily_topic_label が指定されていない通常会話でも毎回違う話題から始まるようにするための内部ヒント集。
+# (opening_question_seed, conversation_hint) のタプル形式。ユーザーには表示されない。
+INTERNAL_TOPICS = [
+    # 日常生活
+    ("your morning routine and what makes it feel good or terrible", "morning habits"),
+    ("your favorite local restaurants or hidden food spots nearby", "local food"),
+    ("how you usually spend your evenings after work or study", "evening routine"),
+    ("the most annoying and best things about commuting", "commuting life"),
+    ("your go-to comfort food and why it makes you feel better", "comfort food"),
+    ("what your home or room says about your personality", "home and space"),
+    ("how you handle a rainy day — do you love it or hate it?", "weather and mood"),
+    ("your relationship with your smartphone — can you go a day without it?", "digital habits"),
+    ("your shopping style — do you browse for hours or go straight for what you need?", "shopping habits"),
+    ("how you usually wind down before bed", "bedtime routine"),
+    # 旅行・場所
+    ("a trip or destination that surprised you in an unexpected way", "travel surprises"),
+    ("a place on your bucket list and why it calls to you", "dream destinations"),
+    ("the best and worst things about living in Japan compared to other places", "Japan life"),
+    ("a small town or lesser-known spot you would recommend to a traveler", "hidden travel gems"),
+    ("if you could live in any city in the world for one year, where would it be?", "city life"),
+    ("how traveling changes the way you see things back home", "travel perspective"),
+    ("your ideal type of holiday — relaxing beach, adventure, or cultural exploration?", "holiday style"),
+    # エンタメ・趣味
+    ("a movie, drama, or anime that has stayed with you long after watching it", "memorable stories"),
+    ("music you listen to when you need energy versus when you want to relax", "music moods"),
+    ("a book, manga, or podcast that completely changed how you think", "mind-changing media"),
+    ("your relationship with video games — casual player, hardcore gamer, or non-player?", "gaming life"),
+    ("if you could master any creative skill instantly, what would you choose?", "creative skills"),
+    ("a hobby you have tried and abandoned, and why", "abandoned hobbies"),
+    ("your favorite season and what you most love doing in it", "seasons"),
+    ("what you do when you need a creative outlet", "creativity"),
+    # 食・料理
+    ("a dish you can cook really well and are proud of", "cooking pride"),
+    ("the weirdest food combination you secretly enjoy", "unusual food"),
+    ("your coffee or tea preferences — and whether you could survive without it", "coffee and tea"),
+    ("a cuisine from another country you could eat every day", "world cuisine"),
+    ("what cooking at home means to you — is it relaxing or a chore?", "home cooking"),
+    # 健康・ライフスタイル
+    ("your approach to exercise — do you love it, hate it, or find balance somewhere?", "exercise habits"),
+    ("how you manage stress and what actually works for you", "stress management"),
+    ("sleep — are you a night owl, early bird, or somewhere in between?", "sleep habits"),
+    ("small habits that have made a big difference in your life", "life-changing habits"),
+    ("your thoughts on social media — helpful tool, time sink, or both?", "social media life"),
+    # 仕事・学び
+    ("what you enjoy most and least about your current job or studies", "work and study"),
+    ("a skill you are currently trying to improve and how it's going", "current goals"),
+    ("how you stay motivated when things get difficult", "motivation"),
+    ("the best lesson you have learned from a mistake", "learning from mistakes"),
+    ("what an ideal workday looks like for you", "ideal work"),
+    ("if you could switch careers for a year with no risk, what would you try?", "career dreams"),
+    # 人間関係
+    ("what qualities you value most in a close friend", "friendship values"),
+    ("how you handle disagreements — do you speak up or avoid conflict?", "conflict style"),
+    ("a compliment someone gave you that you still think about", "memorable compliments"),
+    ("how technology has changed the way you stay in touch with people", "staying connected"),
+    ("what your relationship with social media says about modern friendship", "digital friendship"),
+    # 思考・価値観
+    ("something you believed strongly as a kid but now think differently about", "changed beliefs"),
+    ("what success means to you — and whether that definition has changed", "definition of success"),
+    ("if you could give your younger self one piece of advice, what would it be?", "advice to self"),
+    ("a decision you made that turned out better than you expected", "good decisions"),
+    ("what you think about when you cannot sleep", "late night thoughts"),
+    ("what happiness looks like in your day-to-day life", "everyday happiness"),
+    # テクノロジー・未来
+    ("how AI is already changing your daily life, even in small ways", "AI in daily life"),
+    ("a technology you are excited about and one you are worried about", "tech hopes and fears"),
+    ("what you think the world will look like in 20 years", "future world"),
+    ("how you feel about remote work or online study — pro or con?", "remote life"),
+    # 季節・文化
+    ("your favorite Japanese tradition or seasonal event and what it means to you", "Japanese traditions"),
+    ("how you celebrate your birthday — big party, quiet day, or skip it entirely?", "birthdays"),
+    ("what summer means to you beyond just the heat", "summer vibes"),
+    ("a cultural difference between Japan and other countries that fascinates you", "cultural differences"),
+    # 動物・自然
+    ("your relationship with animals — do you have or want a pet?", "pets and animals"),
+    ("the most beautiful natural place you have ever seen", "nature beauty"),
+    ("how spending time in nature makes you feel", "nature and mood"),
+    # ユニーク・おもしろい
+    ("a superpower you would choose and how you would actually use it in real life", "superpowers"),
+    ("the best and worst trends you have seen come and go", "trends"),
+    ("if you could have dinner with anyone — living or historical — who would it be?", "dinner with anyone"),
+    ("the strangest or funniest thing that has happened to you recently", "funny moments"),
+    ("if you could instantly speak any language fluently, which one and why?", "language dreams"),
+    ("your hidden talent that most people do not know about", "hidden talents"),
+    ("what you would do with a completely free day with no obligations", "perfect free day"),
+]
 
 
 class SessionListView(generics.ListAPIView):
@@ -73,7 +162,14 @@ def start_session(request):
             f'Keep it to 2-3 sentences and end with a question that naturally continues the scenario.'
         )
     else:
-        opening_prompt = f'Please start our conversation with a friendly greeting and an opening question about {topic}.'
+        # 内部テーマをランダム選択して会話の多様性を確保（ユーザーには表示されない）
+        internal_seed, internal_hint = random.choice(INTERNAL_TOPICS)
+        opening_prompt = (
+            f'Please start our conversation with a warm, natural greeting and ONE engaging opening question about '
+            f'{internal_seed}. '
+            f'Be conversational and friendly — like chatting with a curious friend, not a formal interview. '
+            f'Keep it to 2-3 sentences max.'
+        )
 
     opening_messages = [{'role': 'user', 'content': opening_prompt}]
 

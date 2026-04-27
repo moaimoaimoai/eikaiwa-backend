@@ -95,14 +95,33 @@ def ai_warmup(request):
     AIが毎回異なるウォームアップフレーズを10個生成して返す。
     直近7日間に表示したフレーズは除外（重複防止）。
     1日あたり DAILY_AI_LIMIT 回まで生成可能。
+
+    force=true を指定した場合のみ新規生成する。
+    force=false（デフォルト）かつ当日生成済みデータがある場合は既存データを返す。
     """
     user = request.user
     level = request.query_params.get('level', user.level)
+    force = request.query_params.get('force', 'false').lower() == 'true'
 
     # ── 1日の生成回数チェック ──
     today_start = timezone.now().replace(hour=0, minute=0, second=0, microsecond=0)
     today_sessions = AIWarmupSession.objects.filter(user=user, created_at__gte=today_start).order_by('-created_at')
     today_count = today_sessions.count()
+
+    # ── 当日すでに生成済みで force=false の場合は既存データを返す ──
+    if today_count > 0 and not force:
+        latest_session = today_sessions.first()
+        phrases = latest_session.phrases_data or []
+        remaining = max(0, DAILY_AI_LIMIT - today_count)
+        return Response({
+            'phrases': phrases,
+            'count': len(phrases),
+            'remaining_today': remaining,
+            'used_today': today_count,
+            'daily_limit': DAILY_AI_LIMIT,
+            'is_cached': True,
+        })
+
     if today_count >= DAILY_AI_LIMIT:
         # 今日生成済みのフレーズをすべて集めて返す（重複除去）
         seen_hashes: set = set()
@@ -180,13 +199,31 @@ def ai_words(request):
     """
     AIが毎回異なる単語カードを10個生成して返す。
     フレーズと同様に直近7日の重複防止・1日上限付き。
+
+    force=true を指定した場合のみ新規生成する。
+    force=false（デフォルト）かつ当日生成済みデータがある場合は既存データを返す。
     """
     user = request.user
     level = request.query_params.get('level', user.level)
+    force = request.query_params.get('force', 'false').lower() == 'true'
 
     today_start = timezone.now().replace(hour=0, minute=0, second=0, microsecond=0)
     today_sessions = AIWordSession.objects.filter(user=user, created_at__gte=today_start).order_by('-created_at')
     today_count = today_sessions.count()
+
+    # ── 当日すでに生成済みで force=false の場合は既存データを返す ──
+    if today_count > 0 and not force:
+        latest_session = today_sessions.first()
+        words = latest_session.words_data or []
+        remaining = max(0, DAILY_AI_WORD_LIMIT - today_count)
+        return Response({
+            'words': words,
+            'count': len(words),
+            'remaining_today': remaining,
+            'used_today': today_count,
+            'daily_limit': DAILY_AI_WORD_LIMIT,
+            'is_cached': True,
+        })
 
     if today_count >= DAILY_AI_WORD_LIMIT:
         seen_hashes: set = set()
